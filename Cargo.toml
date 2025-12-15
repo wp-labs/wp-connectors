@@ -1,0 +1,137 @@
+[workspace]
+resolver = "2"
+members = [".",]  # 当前包作为workspace成员
+
+
+[workspace.package]
+version = "0.5.6"
+edition = "2024"
+description = "Unified Kafka connector for wp-flow system supporting both source and sink functionality"
+authors = ["WP Labs Team"]
+license = "MIT"
+repository = "https://github.com/wp-labs/wp-connectors"
+homepage = "https://github.com/wp-labs/wp-connectors"
+
+[workspace.dependencies]
+# WP Core Dependencies
+wp-connector-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.5.1-beta" }
+wp-parse-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.5.1-beta" }
+wp-model-core = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.5.1-beta" }
+wp-log = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
+wp-error = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
+wp-specs = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
+wp-conf-base = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
+wp-data-fmt = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
+
+# Custom Dependencies
+wp-schema = { git = "https://github.com/wp-labs/wp-schema.git", tag= "v0.1.4-alpha" }
+## 上游 workspace 内部 crate 默认使用远程 git（develop 分支）。
+orion_exp = {  git = "https://github.com/galaxy-sec/orion-exp.git", tag = "v0.1.1" }
+
+# Core dependencies
+async-trait = "~0.1"
+anyhow = "~1.0"
+chrono = "~0.4"
+#clap = { version = "~4.0", features = ["derive"] }
+log = "~0.4.29"
+rdkafka-wrap = "~0.1"
+serde = { version = "~1.0", features = ["derive"] }
+serde_json = "~1.0"
+toml = "~0.9.8"
+tokio = { version = "~1.48", features = ["full"] }
+bytes = "~1.11.0"
+winnow = "~0.7"
+educe = { version = "~0.6.0", features = ["Debug", "Clone", "Copy"] }
+# WP Dependencies - using workspace versions
+
+# Orion Dependencies
+orion-error = "0.5.5"
+orion_conf = { version = "~0.3", features = ["yaml", "toml"] }
+
+sea-orm = { version = "~1.1", default-features = false, features = ["sqlx-mysql", "runtime-tokio-rustls"] }
+
+# Optional Feature Dependencies
+actix-web = "~4.12.1"
+reqwest = { version = "0.12.25", features = ["json"] }
+prometheus = "~0.14.0"
+regex = "~1.12.2"
+lazy_static = "~1.5"
+uuid = { version = "1.19.0", features = ["v4"] }
+
+# Dev Dependencies
+env_logger = "~0.11.8"
+
+[package]
+name = "wp-connectors"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+
+[features]
+# 默认只编译 Kafka 相关代码；需要 Prometheus 导出器时启用 `prometheus` 特性
+#default = ["kafka"]
+default = ["kafka", "mysql", "prometheus", "victoriametric", "victorialog"]
+kafka = []
+mysql = []
+victorialog = []
+prometheus = [
+    "dep:actix-web",
+    "dep:prometheus",
+    "dep:regex",
+    "dep:lazy_static",
+    "dep:uuid",
+]
+victoriametric = [
+    "dep:reqwest",
+    "dep:prometheus",
+    "dep:regex",
+    "dep:lazy_static",
+    "dep:uuid",
+]
+elasticsearch = []
+clickhouse = []
+full = ["kafka", "mysql", "prometheus", "elasticsearch", "clickhouse", "victoriametric"]
+
+[dependencies]
+# WP Dependencies - using workspace versions
+wp-connector-api = { workspace = true }
+wp-parse-api = { workspace = true }
+wp-model-core = { workspace = true }
+wp-log = { workspace = true }
+wp-error = { workspace = true }
+wp-specs = { workspace = true }
+wp-conf-base = { workspace = true }
+wp-data-fmt = { workspace = true }
+wp-schema = { workspace = true }
+orion_exp = { workspace = true }
+
+# Orion Dependencies - using workspace versions
+orion-error = { workspace = true }
+orion_conf = { workspace = true }
+
+# Core Dependencies - using workspace versions
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+rdkafka-wrap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+winnow = { workspace = true }
+educe = { workspace = true }
+sea-orm = { workspace = true }
+
+# Optional Dependencies - using workspace versions
+actix-web = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+prometheus = { workspace = true, optional = true }
+regex = { workspace = true, optional = true }
+lazy_static = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
+
+[dev-dependencies]
+env_logger = { workspace = true }
+chrono = { workspace = true }
