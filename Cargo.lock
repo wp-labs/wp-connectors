@@ -3759,16 +3759,18 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "wp-conf-base"
-version = "0.5.10"
-source = "git+https://github.com/wp-labs/wp-infras?tag=v0.5.10-beta#fdb472fbc5c28be2d21c15b6c28fd5641c704195"
+version = "0.6.0"
+source = "git+https://github.com/wp-labs/wp-infras?tag=v0.6.0-alpha#d33b213109120faff5ce8a77360fe84fb0fe8e46"
 dependencies = [
  "anyhow",
  "derive_more",
  "log",
  "orion_conf",
  "serde",
+ "serde_json",
  "toml",
- "wp-model-core",
+ "wp-connector-api 0.6.0",
+ "wp-model-core 0.6.0",
 ]
 
 [[package]]
@@ -3787,8 +3789,28 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.17",
  "toml",
- "wp-model-core",
- "wp-parse-api",
+ "wp-model-core 0.5.1",
+ "wp-parse-api 0.5.1",
+]
+
+[[package]]
+name = "wp-connector-api"
+version = "0.6.0"
+source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.6.0-alpha#3e3ad1b4fe01a70cb65368a5ee55e657c35e9ab4"
+dependencies = [
+ "anyhow",
+ "async-broadcast",
+ "async-trait",
+ "derive_more",
+ "once_cell",
+ "orion-error",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "thiserror 2.0.17",
+ "toml",
+ "wp-model-core 0.6.0",
+ "wp-parse-api 0.6.0",
 ]
 
 [[package]]
@@ -3819,12 +3841,12 @@ dependencies = [
  "uuid",
  "winnow",
  "wp-conf-base",
- "wp-connector-api",
+ "wp-connector-api 0.5.1",
  "wp-data-fmt",
  "wp-error",
  "wp-log",
- "wp-model-core",
- "wp-parse-api",
+ "wp-model-core 0.5.1",
+ "wp-parse-api 0.5.1",
  "wp-schema",
  "wp-specs",
 ]
@@ -3837,7 +3859,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "wp-model-core",
+ "wp-model-core 0.5.1",
 ]
 
 [[package]]
@@ -3853,7 +3875,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.17",
  "unicode-segmentation",
- "wp-connector-api",
+ "wp-connector-api 0.5.1",
  "wp-log",
 ]
 
@@ -3887,6 +3909,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "wp-model-core"
+version = "0.6.0"
+source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.6.0-alpha#3e3ad1b4fe01a70cb65368a5ee55e657c35e9ab4"
+dependencies = [
+ "chrono",
+ "ipnet",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "smallvec",
+ "thiserror 2.0.17",
+ "wildmatch",
+]
+
+[[package]]
 name = "wp-parse-api"
 version = "0.5.1"
 source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.5.1-beta#2103cf372a8451a26c5f1c07584e0c5abb884250"
@@ -3897,7 +3934,21 @@ dependencies = [
  "serde",
  "serde_derive",
  "thiserror 2.0.17",
- "wp-model-core",
+ "wp-model-core 0.5.1",
+]
+
+[[package]]
+name = "wp-parse-api"
+version = "0.6.0"
+source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.6.0-alpha#3e3ad1b4fe01a70cb65368a5ee55e657c35e9ab4"
+dependencies = [
+ "bytes",
+ "derive_more",
+ "orion-error",
+ "serde",
+ "serde_derive",
+ "thiserror 2.0.17",
+ "wp-model-core 0.6.0",
 ]
 
 [[package]]
