@@ -8,7 +8,7 @@ use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkReason,
 use wp_data_fmt::{DataFormat, FormatType};
 use wp_model_core::model::{DataRecord, fmt_def::TextFmt};
 
-use crate::kafka::config::OutKafka;
+use crate::kafka::config::KafkaSinkConf;
 
 type AnyResult<T> = anyhow::Result<T>;
 
@@ -86,7 +86,7 @@ impl AsyncRecordSink for KafkaSink {
 }
 
 impl KafkaSink {
-    pub async fn from_conf(conf: &OutKafka, fmt: TextFmt) -> AnyResult<Self> {
+    pub async fn from_conf(conf: &KafkaSinkConf, fmt: TextFmt) -> AnyResult<Self> {
         let mut kc = KWProducerConf::new(&conf.brokers).set_topic_conf(
             &conf.topic,
             conf.num_partitions,

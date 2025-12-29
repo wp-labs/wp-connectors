@@ -1,7 +1,11 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use wp_connector_api::{SinkBuildCtx, SinkFactory, SinkHandle, SinkSpec};
+use serde_json::json;
+use wp_connector_api::{
+    ConnectorDef, ConnectorDefProvider, ConnectorScope, ParamMap, SinkBuildCtx, SinkError,
+    SinkFactory, SinkHandle, SinkReason, SinkResult, SinkSpec,
+};
 
 use super::config::VictoriaMetric;
 use super::exporter::VictoriaMetricExporter;
@@ -13,18 +17,18 @@ impl SinkFactory for VictoriaMetricFactory {
     fn kind(&self) -> &'static str {
         "victoriametric"
     }
-    fn validate_spec(&self, spec: &SinkSpec) -> anyhow::Result<()> {
+    fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
         let endpoint = spec
             .params
             .get("endpoint")
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if endpoint.trim().is_empty() {
-            anyhow::bail!("prometheus.endpoint must not be empty");
+            return Err(SinkReason::sink("victoriametric.endpoint must not be empty").into());
         }
         Ok(())
     }
-    async fn build(&self, spec: &SinkSpec, _ctx: &SinkBuildCtx) -> anyhow::Result<SinkHandle> {
+    async fn build(&self, spec: &SinkSpec, _ctx: &SinkBuildCtx) -> SinkResult<SinkHandle> {
         let mut conf = VictoriaMetric::default();
         if let Some(s) = spec.params.get("endpoint").and_then(|v| v.as_str()) {
             conf.endpoint = s.to_string();
@@ -42,7 +46,12 @@ impl SinkFactory for VictoriaMetricFactory {
         }
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
-            .build()?;
+            .build()
+            .map_err(|err| {
+                SinkError::from(SinkReason::sink(format!(
+                    "build victoriametric client failed: {err}"
+                )))
+            })?;
         let mut sink = VictoriaMetricExporter::new(
             conf.endpoint.clone(),
             conf.insert_path.clone(),
@@ -52,4 +61,27 @@ impl SinkFactory for VictoriaMetricFactory {
         sink.start_flush_task();
         Ok(SinkHandle::new(Box::new(sink)))
     }
+}
+
+impl ConnectorDefProvider for VictoriaMetricFactory {
+    fn sink_def(&self) -> ConnectorDef {
+        ConnectorDef {
+            id: "victoriametric_sink".into(),
+            kind: self.kind().into(),
+            scope: ConnectorScope::Sink,
+            allow_override: vec!["endpoint", "flush_interval_secs"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            default_params: victoriametric_defaults(),
+            origin: Some("wp-connectors:victoriametric_sink".into()),
+        }
+    }
+}
+
+fn victoriametric_defaults() -> ParamMap {
+    let mut params = ParamMap::new();
+    params.insert("endpoint".into(), json!("http://localhost:8480"));
+    params.insert("flush_interval_secs".into(), json!(5.0));
+    params
 }

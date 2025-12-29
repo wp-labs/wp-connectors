@@ -33,7 +33,7 @@ async-trait = "~0.1"
 anyhow = "~1.0"
 chrono = "~0.4"
 log = "~0.4"
-rdkafka-wrap = "~0.1"
+rdkafka-wrap = { version = "~0.1"  }
 serde = { version = "~1.0", features = ["derive"] }
 serde_json = "~1.0"
 toml = "~0.9"
@@ -95,7 +95,7 @@ wp-error = { workspace = true }
 wp-specs = { workspace = true }
 wp-conf-base = { workspace = true }
 wp-data-fmt = { workspace = true }
-wp_schema = { workspace = true }
+wp-schema = { workspace = true }
 orion_exp = { workspace = true }
 
 # Orion Dependencies - using workspace versions
@@ -107,7 +107,7 @@ async-trait = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 log = { workspace = true }
-rdkafka-wrap = { workspace = true }
+rdkafka-wrap = { workspace = true, optional = true  }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
