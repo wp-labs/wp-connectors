@@ -50,6 +50,7 @@ orion_conf = { version = "~0.3", features = ["yaml", "toml"] }
 
 sea-orm = { version = "~1.1", default-features = false, features = ["sqlx-mysql", "runtime-tokio-rustls"] }
 
+
 # Optional Feature Dependencies
 actix-web = "~4.12.1"
 reqwest = { version = "0.12.25", features = ["json"] }
@@ -70,7 +71,7 @@ description.workspace = true
 [features]
 # 默认只编译 Kafka 相关代码；需要 Prometheus 导出器时启用 `prometheus` 特性
 #default = ["kafka"]
-default = ["kafka", "mysql", "prometheus", "victoriametric", "victorialog"]
+default = ["kafka", "mysql", "prometheus", "victoriametric", "victorialog", "doris"]
 kafka = ["dep:rdkafka-wrap"]
 mysql = []
 victorialog = []
@@ -90,7 +91,8 @@ victoriametric = [
 ]
 elasticsearch = []
 clickhouse = []
-full = ["kafka", "mysql", "prometheus", "elasticsearch", "clickhouse", "victoriametric"]
+doris = ["dep:reqwest", "dep:sqlx"]
+full = ["kafka", "mysql", "prometheus", "elasticsearch", "clickhouse", "victoriametric", "doris"]
 
 [dependencies]
 # WP Dependencies - using workspace versions
@@ -122,7 +124,8 @@ bytes = { workspace = true }
 winnow = { workspace = true }
 educe = { workspace = true }
 sea-orm = { workspace = true }
-
+# sqlx = { version = "0.8.2", default-features = false, features = ["runtime-tokio", "macros", "mysql", "tls-native-tls"], optional = true }
+sqlx = { version = "0.8", default-features = false, features = ["mysql", "runtime-tokio", "tls-native-tls"] , optional = true }
 # Optional Dependencies - using workspace versions
 actix-web = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
