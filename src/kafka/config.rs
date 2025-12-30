@@ -33,7 +33,7 @@ impl Validate for KafkaSourceConf {
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
-pub struct OutKafka {
+pub struct KafkaSinkConf {
     pub brokers: String,
     pub topic: String,
     pub num_partitions: i32,
@@ -41,7 +41,7 @@ pub struct OutKafka {
     pub config: Option<Vec<String>>,
 }
 
-impl OutKafka {
+impl KafkaSinkConf {
     pub fn new(topic: &str) -> Self {
         Self {
             topic: topic.to_string(),
@@ -69,7 +69,7 @@ impl Default for KafkaSourceConf {
     }
 }
 
-impl Default for OutKafka {
+impl Default for KafkaSinkConf {
     fn default() -> Self {
         Self {
             brokers: "localhost:9092".to_string(),

@@ -4,10 +4,12 @@ use super::sink::MysqlSink;
 use super::source::MysqlSource;
 use async_trait::async_trait;
 use sea_orm::{ConnectOptions, Database};
+use serde_json::json;
 use std::time::Duration;
 use wp_connector_api::{
-    SinkBuildCtx, SinkFactory, SinkHandle, SinkSpec, SourceHandle, SourceMeta, SourceReason,
-    SourceResult, SourceSvcIns, Tags,
+    ConnectorDef, ConnectorDefProvider, ConnectorScope, ParamMap, SinkBuildCtx, SinkError,
+    SinkFactory, SinkHandle, SinkReason, SinkResult, SinkSpec, SourceFactory, SourceHandle,
+    SourceMeta, SourceReason, SourceResult, SourceSvcIns, Tags,
 };
 use wp_model_core::model::TagSet;
 
@@ -91,14 +93,14 @@ impl SinkFactory for MySQLSinkFactory {
     fn kind(&self) -> &'static str {
         "mysql"
     }
-    fn validate_spec(&self, spec: &SinkSpec) -> anyhow::Result<()> {
+    fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
         let endpoint = spec
             .params
             .get("endpoint")
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if endpoint.trim().is_empty() {
-            anyhow::bail!("mysql.endpoint must not be empty");
+            return Err(SinkReason::sink("mysql.endpoint must not be empty").into());
         }
         let database = spec
             .params
@@ -106,16 +108,16 @@ impl SinkFactory for MySQLSinkFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if database.trim().is_empty() {
-            anyhow::bail!("mysql.database must not be empty");
+            return Err(SinkReason::sink("mysql.database must not be empty").into());
         }
         if let Some(i) = spec.params.get("batch").and_then(|v| v.as_i64())
             && i <= 0
         {
-            anyhow::bail!("mysql.batch must be > 0");
+            return Err(SinkReason::sink("mysql.batch must be > 0").into());
         }
         Ok(())
     }
-    async fn build(&self, spec: &SinkSpec, _ctx: &SinkBuildCtx) -> anyhow::Result<SinkHandle> {
+    async fn build(&self, spec: &SinkSpec, _ctx: &SinkBuildCtx) -> SinkResult<SinkHandle> {
         // Build Mysql conf from flat params
         let mut conf = MysqlConf::default();
         if let Some(s) = spec.params.get("endpoint").and_then(|v| v.as_str()) {
@@ -138,21 +140,20 @@ impl SinkFactory for MySQLSinkFactory {
             conf.batch = Some(i as usize);
         }
         // columns 列表在新版配置中不在 conf 中，作为外部参数传入 sink
-        let mut columns: Vec<String> = spec
-            .params
-            .get("columns")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .map(|v| {
-                        v.as_str()
-                            .map(str::to_owned)
-                            .ok_or_else(|| anyhow::anyhow!("column must be string"))
-                    })
-                    .collect::<anyhow::Result<Vec<String>>>()
-            })
-            .transpose()?
-            .unwrap_or_default();
+        let mut columns: Vec<String> =
+            if let Some(arr) = spec.params.get("columns").and_then(|v| v.as_array()) {
+                let mut out = Vec::with_capacity(arr.len());
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        out.push(s.to_string());
+                    } else {
+                        return Err(SinkReason::sink("mysql.columns entries must be string").into());
+                    }
+                }
+                out
+            } else {
+                Vec::new()
+            };
 
         // 内置主键 wp_event_id 必须包含在 columns 中
         if !columns.contains(&"wp_event_id".to_string()) {
@@ -168,7 +169,9 @@ impl SinkFactory for MySQLSinkFactory {
             .max_lifetime(Duration::from_secs(8))
             .sqlx_logging(false)
             .sqlx_logging_level(log::LevelFilter::Info);
-        let db = Database::connect(opt).await?;
+        let db = Database::connect(opt).await.map_err(|err| {
+            SinkError::from(SinkReason::sink(format!("connect mysql fail: {err}")))
+        })?;
         let table = conf.table.clone().unwrap_or_else(|| spec.name.clone());
         let sink = MysqlSink::new(db, table, columns, conf.batch, url);
         Ok(SinkHandle::new(Box::new(sink)))
@@ -195,4 +198,59 @@ fn extract_spec_tags(raw_tags: &[String]) -> (TagSet, Tags) {
         src_tags.set(key.to_string(), value.to_string());
     }
     (tag_set, src_tags)
+}
+
+impl ConnectorDefProvider for MySQLSourceFactory {
+    fn source_def(&self) -> ConnectorDef {
+        ConnectorDef {
+            id: "mysql_src".into(),
+            kind: self.kind().into(),
+            scope: ConnectorScope::Source,
+            allow_override: vec!["endpoint", "database", "table", "username", "batch"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            default_params: mysql_source_defaults(),
+            origin: Some("wp-connectors:mysql_source".into()),
+        }
+    }
+}
+
+impl ConnectorDefProvider for MySQLSinkFactory {
+    fn sink_def(&self) -> ConnectorDef {
+        ConnectorDef {
+            id: "mysql_sink".into(),
+            kind: self.kind().into(),
+            scope: ConnectorScope::Sink,
+            allow_override: vec![
+                "endpoint", "database", "table", "username", "batch", "columns",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+            default_params: mysql_sink_defaults(),
+            origin: Some("wp-connectors:mysql_sink".into()),
+        }
+    }
+}
+
+fn mysql_source_defaults() -> ParamMap {
+    let mut params = ParamMap::new();
+    params.insert("endpoint".into(), json!("mysql://localhost:3306"));
+    params.insert("database".into(), json!("wp_data"));
+    params.insert("table".into(), json!("wp_events"));
+    params.insert("username".into(), json!("root"));
+    params.insert("batch".into(), json!(1024));
+    params
+}
+
+fn mysql_sink_defaults() -> ParamMap {
+    let mut params = ParamMap::new();
+    params.insert("endpoint".into(), json!("mysql://localhost:3306"));
+    params.insert("database".into(), json!("wp_data"));
+    params.insert("table".into(), json!("wp_events"));
+    params.insert("username".into(), json!("root"));
+    params.insert("batch".into(), json!(1000));
+    params.insert("columns".into(), json!(["wp_event_id", "payload"]));
+    params
 }

@@ -1,2 +1,4 @@
 target/
 .*/
+.run.gxl
+wp-docs
