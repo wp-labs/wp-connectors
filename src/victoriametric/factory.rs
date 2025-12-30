@@ -3,8 +3,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::json;
 use wp_connector_api::{
-    ConnectorDef, ConnectorDefProvider, ConnectorScope, ParamMap, SinkBuildCtx, SinkError,
-    SinkFactory, SinkHandle, SinkReason, SinkResult, SinkSpec,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
+    SinkHandle, SinkReason, SinkResult, SinkSpec,
 };
 
 use super::config::VictoriaMetric;
@@ -63,7 +63,7 @@ impl SinkFactory for VictoriaMetricFactory {
     }
 }
 
-impl ConnectorDefProvider for VictoriaMetricFactory {
+impl SinkDefProvider for VictoriaMetricFactory {
     fn sink_def(&self) -> ConnectorDef {
         ConnectorDef {
             id: "victoriametric_sink".into(),

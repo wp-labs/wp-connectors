@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use wp_conf_base::ConfParser;
 use wp_connector_api::{
-    ConnectorDef, ConnectorDefProvider, ConnectorScope, ParamMap, SinkBuildCtx, SinkError,
-    SinkFactory, SinkHandle, SinkReason, SinkResult, SinkSpec, SourceFactory, SourceHandle,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
+    SinkHandle, SinkReason, SinkResult, SinkSpec, SourceDefProvider, SourceFactory, SourceHandle,
     SourceMeta, SourceReason, SourceResult, SourceSvcIns, Tags,
 };
-use wp_model_core::model::{TagSet, fmt_def::TextFmt};
+use wp_model_core::model::fmt_def::TextFmt;
 
 use crate::kafka::{
     KafkaSink, KafkaSource,
@@ -242,11 +243,10 @@ impl wp_connector_api::SourceFactory for KafkaSourceFactory {
     ) -> SourceResult<SourceSvcIns> {
         let (conf, group_id) = build_kafka_conf_from_spec(spec)?;
 
-        let (mut tag_set, mut meta_tags) = extract_spec_tags(&spec.tags);
+        let mut meta_tags = Tags::from_parse(&spec.tags);
         let access_source = spec.kind.clone();
-        tag_set.append("access_source", &access_source);
         meta_tags.set("access_source", access_source);
-        let source = KafkaSource::new(spec.name.clone(), tag_set, &group_id, &conf)
+        let source = KafkaSource::new(spec.name.clone(), meta_tags.clone(), &group_id, &conf)
             .await
             .map_err(|err| SourceReason::Other(err.to_string()))?;
 
@@ -279,29 +279,7 @@ impl SinkFactory for KafkaSinkFactory {
     }
 }
 
-fn extract_spec_tags(raw_tags: &[String]) -> (TagSet, Tags) {
-    let mut tag_set = TagSet::default();
-    let mut src_tags = Tags::new();
-    for raw in raw_tags {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let (key, value) = if let Some((k, v)) = trimmed.split_once('=') {
-            (k.trim(), v.trim())
-        } else {
-            (trimmed, "")
-        };
-        if key.is_empty() {
-            continue;
-        }
-        tag_set.append(key, value);
-        src_tags.set(key.to_string(), value.to_string());
-    }
-    (tag_set, src_tags)
-}
-
-impl ConnectorDefProvider for KafkaSourceFactory {
+impl SourceDefProvider for KafkaSourceFactory {
     fn source_def(&self) -> ConnectorDef {
         ConnectorDef {
             id: "kafka_src".into(),
@@ -317,7 +295,7 @@ impl ConnectorDefProvider for KafkaSourceFactory {
     }
 }
 
-impl ConnectorDefProvider for KafkaSinkFactory {
+impl SinkDefProvider for KafkaSinkFactory {
     fn sink_def(&self) -> ConnectorDef {
         ConnectorDef {
             id: "kafka_sink".into(),

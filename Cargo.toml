@@ -3,7 +3,7 @@ resolver = "2"
 members = [".",]  # 当前包作为workspace成员
 
 [workspace.package]
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 description = "Unified Kafka connector for wp-flow system supporting both source and sink functionality"
 authors = ["WP Labs Team"]
@@ -13,14 +13,14 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
 # WP Core Dependencies - 使用模板变量
-wp-connector-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.6.0-alpha" }
-wp-parse-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.6.0-alpha" }
-wp-model-core = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.6.0-alpha" }
-wp-log = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.0-alpha" }
-wp-error = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.0-alpha" }
-wp-specs = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.0-alpha" }
-wp-conf-base = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.0-alpha" }
-wp-data-fmt = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.0-alpha" }
+wp-connector-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.6.1-beta" }
+wp-parse-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.6.1-beta" }
+wp-model-core = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.6.1-beta" }
+wp-log = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.1-beta" }
+wp-error = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.1-beta" }
+wp-specs = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.1-beta" }
+wp-conf-base = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.1-beta" }
+wp-data-fmt = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.6.1-beta" }
 
 wp-schema = { git = "https://github.com/wp-labs/wp-schema.git", tag= "v0.1.4-alpha" }
 orion_exp = {  git = "https://github.com/galaxy-sec/orion-exp.git", tag = "v0.1.1" }

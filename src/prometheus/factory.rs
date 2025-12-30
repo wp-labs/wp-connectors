@@ -3,8 +3,8 @@
 use async_trait::async_trait;
 use serde_json::json;
 use wp_connector_api::{
-    ConnectorDef, ConnectorDefProvider, ConnectorScope, ParamMap, SinkBuildCtx, SinkFactory,
-    SinkHandle, SinkReason, SinkResult, SinkSpec,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
+    SinkReason, SinkResult, SinkSpec,
 };
 
 use super::config::Prometheus;
@@ -58,7 +58,7 @@ impl SinkFactory for PrometheusFactory {
     }
 }
 
-impl ConnectorDefProvider for PrometheusFactory {
+impl SinkDefProvider for PrometheusFactory {
     fn sink_def(&self) -> ConnectorDef {
         ConnectorDef {
             id: "prometheus_sink".into(),

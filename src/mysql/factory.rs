@@ -6,9 +6,10 @@ use async_trait::async_trait;
 use sea_orm::{ConnectOptions, Database};
 use serde_json::json;
 use std::time::Duration;
+use wp_conf_base::ConfParser;
 use wp_connector_api::{
-    ConnectorDef, ConnectorDefProvider, ConnectorScope, ParamMap, SinkBuildCtx, SinkError,
-    SinkFactory, SinkHandle, SinkReason, SinkResult, SinkSpec, SourceFactory, SourceHandle,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
+    SinkHandle, SinkReason, SinkResult, SinkSpec, SourceDefProvider, SourceFactory, SourceHandle,
     SourceMeta, SourceReason, SourceResult, SourceSvcIns, Tags,
 };
 use wp_model_core::model::TagSet;
@@ -72,10 +73,9 @@ impl wp_connector_api::SourceFactory for MySQLSourceFactory {
         if let Some(table) = spec.params.get("table").and_then(|v| v.as_str()) {
             conf.table = Some(table.to_string());
         }
-        let (mut tag_set, mut meta_tags) = extract_spec_tags(&spec.tags);
-        tag_set.append("access_source", "mysql");
+        let mut meta_tags = Tags::from_parse(&spec.tags);
         meta_tags.set("access_source", "mysql");
-        let source = MysqlSource::new(spec.name.clone(), tag_set, &conf)
+        let source = MysqlSource::new(spec.name.clone(), meta_tags.clone(), &conf)
             .await
             .map_err(|err| SourceReason::Other(err.to_string()))?;
 
@@ -178,29 +178,7 @@ impl SinkFactory for MySQLSinkFactory {
     }
 }
 
-fn extract_spec_tags(raw_tags: &[String]) -> (TagSet, Tags) {
-    let mut tag_set = TagSet::default();
-    let mut src_tags = Tags::new();
-    for raw in raw_tags {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let (key, value) = if let Some((k, v)) = trimmed.split_once('=') {
-            (k.trim(), v.trim())
-        } else {
-            (trimmed, "")
-        };
-        if key.is_empty() {
-            continue;
-        }
-        tag_set.append(key, value);
-        src_tags.set(key.to_string(), value.to_string());
-    }
-    (tag_set, src_tags)
-}
-
-impl ConnectorDefProvider for MySQLSourceFactory {
+impl SourceDefProvider for MySQLSourceFactory {
     fn source_def(&self) -> ConnectorDef {
         ConnectorDef {
             id: "mysql_src".into(),
@@ -216,7 +194,7 @@ impl ConnectorDefProvider for MySQLSourceFactory {
     }
 }
 
-impl ConnectorDefProvider for MySQLSinkFactory {
+impl SinkDefProvider for MySQLSinkFactory {
     fn sink_def(&self) -> ConnectorDef {
         ConnectorDef {
             id: "mysql_sink".into(),
