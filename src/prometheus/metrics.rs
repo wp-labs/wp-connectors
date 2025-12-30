@@ -37,7 +37,7 @@ pub(crate) fn source_values(data: &DataRecord, format: &str) -> (RecvMetrics, i6
     if let Some(Value::Chars(f)) = data.get2("target").opt().get_value() {
         recv_metrics.key = f.to_string();
         if let Ok(re) = Regex::new(format)
-            && let Some(caps) = re.captures(&f)
+            && let Some(caps) = re.captures(f)
         {
             recv_metrics.source_type = caps["source_type"].to_string();
         }
@@ -80,7 +80,7 @@ pub(crate) fn send_sink(data: &DataRecord, format: &str) -> (SinkMetrics, u64) {
     if let Some(Value::Chars(f)) = data.get2("target").opt().get_value() {
         sink_metrics.name = f.to_string();
         if let Ok(re) = Regex::new(format)
-            && let Some(caps) = re.captures(&f)
+            && let Some(caps) = re.captures(f)
         {
             sink_metrics.sink_type = caps["sink_type"].to_string();
         }

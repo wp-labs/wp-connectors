@@ -16,7 +16,7 @@ pub struct VictoriaLogSinkFactory;
 #[async_trait]
 impl SinkFactory for VictoriaLogSinkFactory {
     fn kind(&self) -> &'static str {
-        "victorialog"
+        "victorialogs"
     }
     fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
         let endpoint = spec
@@ -37,6 +37,13 @@ impl SinkFactory for VictoriaLogSinkFactory {
         if let Some(s) = spec.params.get("insert_path").and_then(|v| v.as_str()) {
             conf.insert_path = s.to_string();
         }
+        if let Some(s) = spec
+            .params
+            .get("create_time_field")
+            .and_then(|v| v.as_str())
+        {
+            conf.create_time_field = Some(s.to_string());
+        }
         let fmt = spec
             .params
             .get("fmt")
@@ -51,8 +58,13 @@ impl SinkFactory for VictoriaLogSinkFactory {
                     "build victorialog client failed: {err}"
                 )))
             })?;
-        let sink =
-            VictoriaLogSink::new(conf.endpoint.clone(), conf.insert_path.clone(), client, fmt);
+        let sink = VictoriaLogSink::new(
+            conf.endpoint.clone(),
+            conf.insert_path.clone(),
+            client,
+            fmt,
+            conf.create_time_field.clone(),
+        );
         Ok(SinkHandle::new(Box::new(sink)))
     }
 }

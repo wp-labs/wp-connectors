@@ -22,12 +22,12 @@ fn build_kafka_conf_from_spec(
     let group_id = parse_required_string(spec.params.get("group_id"), "kafka.group_id")?;
     let config = parse_config(spec.params.get("config"))?;
 
-    let mut conf = KafkaSourceConf::default();
-    conf.brokers = brokers;
-    conf.topic = topics;
-    if let Some(config) = config {
-        conf.config = Some(config);
-    }
+    let conf = KafkaSourceConf {
+        brokers,
+        topic: topics,
+        config,
+        ..Default::default()
+    };
     Ok((conf, group_id))
 }
 
@@ -40,18 +40,13 @@ fn build_kafka_sink_conf_from_spec(spec: &SinkSpec) -> SinkResult<(KafkaSinkConf
     let config = parse_sink_config(spec.params.get("config"))?;
     let fmt = parse_sink_fmt(spec.params.get("fmt"))?;
 
-    let mut conf = KafkaSinkConf::default();
-    conf.brokers = brokers;
-    conf.topic = topic;
-    if let Some(num_partitions) = num_partitions {
-        conf.num_partitions = num_partitions;
-    }
-    if let Some(replication) = replication {
-        conf.replication = replication;
-    }
-    if let Some(config) = config {
-        conf.config = Some(config);
-    }
+    let conf = KafkaSinkConf {
+        brokers,
+        topic,
+        num_partitions: num_partitions.unwrap_or_default(),
+        replication: replication.unwrap_or_default(),
+        config,
+    };
     Ok((conf, fmt))
 }
 
