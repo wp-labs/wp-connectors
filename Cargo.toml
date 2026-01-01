@@ -63,10 +63,10 @@ description.workspace = true
 [features]
 # 默认只编译 Kafka 相关代码；需要 Prometheus 导出器时启用 `prometheus` 特性
 #default = ["kafka"]
-default = ["kafka", "mysql", "prometheus", "victoriametric", "victorialogs"]
-kafka = ["dep:rdkafka-wrap"]
+default = ["kafka", "mysql","prometheus","victoriametric", "victorialog"]
+kafka = [ "dep:rdkafka-wrap"]
 mysql = []
-victorialogs = []
+victorialog = []
 prometheus = [
     "dep:actix-web",
     "dep:prometheus",
@@ -82,16 +82,8 @@ victoriametric = [
     "dep:uuid",
 ]
 elasticsearch = []
-clickhouse = []
-full = [
-    "kafka",
-    "mysql",
-    "prometheus",
-    "elasticsearch",
-    "clickhouse",
-    "victorialogs",
-    "victoriametric",
-]
+clickhouse= []
+full = ["kafka", "mysql", "prometheus", "elasticsearch", "clickhouse", "victoriametric"]
 
 [dependencies]
 # WP Dependencies - using workspace versions
