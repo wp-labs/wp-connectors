@@ -357,6 +357,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "borsh"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1da5ab77c1437701eeff7c88d968729e7766172279eab0676857b3d63af7a6f"
+dependencies = [
+ "cfg_aliases",
+]
+
+[[package]]
 name = "brotli"
 version = "8.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -421,6 +430,12 @@ name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+
+[[package]]
+name = "cfg_aliases"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chrono"
@@ -2527,6 +2542,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "smol_str"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3498b0a27f93ef1402f20eefacfaa1691272ac4eca1cdc8c596cb0a245d6cbf5"
+dependencies = [
+ "borsh",
+ "serde_core",
+]
+
+[[package]]
 name = "socket2"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3661,8 +3686,8 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "wp-conf-base"
-version = "0.6.1"
-source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7#4d111f6ffa90e635ad5ed07d53949b5bfc0c1c34"
+version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7-smol#31198acf64a6f85955fa0c5ab83e1ce3759b0441"
 dependencies = [
  "anyhow",
  "derive_more",
@@ -3698,7 +3723,7 @@ dependencies = [
 [[package]]
 name = "wp-connector-api"
 version = "0.6.1"
-source = "git+https://github.com/wp-labs/wp-open-api?branch=develop%2F0.7#dc78c73dfee6abab6e0d947bd0324134ec09b8d6"
+source = "git+https://github.com/wp-labs/wp-open-api?branch=develop%2F0.7-smol#871402f5291b6772aa84d1274218868ac6d060c8"
 dependencies = [
  "anyhow",
  "async-broadcast",
@@ -3745,8 +3770,8 @@ dependencies = [
  "wp-conf-base",
  "wp-connector-api 0.6.1",
  "wp-data-fmt",
- "wp-error 0.6.1",
- "wp-log 0.6.1",
+ "wp-error 0.7.0",
+ "wp-log 0.7.0",
  "wp-model-core 0.6.1",
  "wp-parse-api 0.6.1",
  "wp-schema",
@@ -3755,8 +3780,8 @@ dependencies = [
 
 [[package]]
 name = "wp-data-fmt"
-version = "0.6.1"
-source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7#4d111f6ffa90e635ad5ed07d53949b5bfc0c1c34"
+version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7-smol#31198acf64a6f85955fa0c5ab83e1ce3759b0441"
 dependencies = [
  "chrono",
  "serde",
@@ -3783,8 +3808,8 @@ dependencies = [
 
 [[package]]
 name = "wp-error"
-version = "0.6.1"
-source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7#4d111f6ffa90e635ad5ed07d53949b5bfc0c1c34"
+version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7-smol#31198acf64a6f85955fa0c5ab83e1ce3759b0441"
 dependencies = [
  "chrono",
  "derive_more",
@@ -3795,7 +3820,7 @@ dependencies = [
  "thiserror 2.0.17",
  "unicode-segmentation",
  "wp-connector-api 0.6.1",
- "wp-log 0.6.1",
+ "wp-log 0.7.0",
 ]
 
 [[package]]
@@ -3814,8 +3839,8 @@ dependencies = [
 
 [[package]]
 name = "wp-log"
-version = "0.6.1"
-source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7#4d111f6ffa90e635ad5ed07d53949b5bfc0c1c34"
+version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7-smol#31198acf64a6f85955fa0c5ab83e1ce3759b0441"
 dependencies = [
  "anyhow",
  "getset",
@@ -3844,7 +3869,7 @@ dependencies = [
 [[package]]
 name = "wp-model-core"
 version = "0.6.1"
-source = "git+https://github.com/wp-labs/wp-open-api?branch=develop%2F0.7#dc78c73dfee6abab6e0d947bd0324134ec09b8d6"
+source = "git+https://github.com/wp-labs/wp-open-api?branch=develop%2F0.7-smol#871402f5291b6772aa84d1274218868ac6d060c8"
 dependencies = [
  "arcstr",
  "chrono",
@@ -3853,6 +3878,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "smallvec",
+ "smol_str",
  "thiserror 2.0.17",
  "wildmatch",
 ]
@@ -3874,7 +3900,7 @@ dependencies = [
 [[package]]
 name = "wp-parse-api"
 version = "0.6.1"
-source = "git+https://github.com/wp-labs/wp-open-api?branch=develop%2F0.7#dc78c73dfee6abab6e0d947bd0324134ec09b8d6"
+source = "git+https://github.com/wp-labs/wp-open-api?branch=develop%2F0.7-smol#871402f5291b6772aa84d1274218868ac6d060c8"
 dependencies = [
  "bytes",
  "derive_more",
@@ -3905,8 +3931,8 @@ dependencies = [
 
 [[package]]
 name = "wp-specs"
-version = "0.6.1"
-source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7#4d111f6ffa90e635ad5ed07d53949b5bfc0c1c34"
+version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-infras?branch=develop%2F0.7-smol#31198acf64a6f85955fa0c5ab83e1ce3759b0441"
 dependencies = [
  "serde",
  "toml",

@@ -13,14 +13,14 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
 # WP Core Dependencies - 使用模板变量
-wp-connector-api = { git = "https://github.com/wp-labs/wp-open-api", branch= "develop/0.7" }
-wp-parse-api = { git = "https://github.com/wp-labs/wp-open-api", branch = "develop/0.7" }
-wp-model-core = { git = "https://github.com/wp-labs/wp-open-api", branch = "develop/0.7" }
-wp-log = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7" }
-wp-error = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7" }
-wp-specs = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7" }
-wp-conf-base = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7" }
-wp-data-fmt = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7" }
+wp-connector-api = { git = "https://github.com/wp-labs/wp-open-api", branch= "develop/0.7-smol" }
+wp-parse-api = { git = "https://github.com/wp-labs/wp-open-api", branch = "develop/0.7-smol" }
+wp-model-core = { git = "https://github.com/wp-labs/wp-open-api", branch = "develop/0.7-smol" }
+wp-log = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7-smol" }
+wp-error = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7-smol" }
+wp-specs = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7-smol" }
+wp-conf-base = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7-smol" }
+wp-data-fmt = { git = "https://github.com/wp-labs/wp-infras", branch = "develop/0.7-smol" }
 
 wp-schema = { git = "https://github.com/wp-labs/wp-schema.git", tag= "v0.1.4-alpha" }
 orion_exp = {  git = "https://github.com/galaxy-sec/orion-exp.git", tag = "v0.1.1" }
