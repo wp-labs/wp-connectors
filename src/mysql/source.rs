@@ -99,7 +99,7 @@ impl MysqlSource {
     fn create_event(&self, event_id: u64, json_str: String) -> SourceEvent {
         SourceEvent::new(
             event_id,
-            self.key.clone().into(),
+            self.key.clone(),
             RawData::from_string(json_str),
             self.tags.clone().into(),
         )

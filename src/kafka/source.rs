@@ -73,7 +73,7 @@ impl KafkaSource {
                 let event_id = self.event_seq;
                 vec![SourceEvent::new(
                     event_id,
-                    self.key.clone().into(),
+                    self.key.clone(),
                     RawData::Bytes(payload),
                     stags.into(),
                 )]
