@@ -1,8 +1,8 @@
 # wp-connectors
 
 ![License](https://img.shields.io/badge/License-Elastic%20License%202.0-blue)
-![CI](https://github.com/wotttow/wp-connectors/workflows/CI/badge.svg)
-![Codecov](https://codecov.io/gh/wotttow/wp-connectors/branch/main/graph/badge.svg)
+[![CI](https://github.com/wp-labs/wp-connectors/actions/workflows/ci.yml/badge.svg)](https://github.com/wp-labs/wp-connectors/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/wp-labs/wp-connectors/branch/main/graph/badge.svg)](https://codecov.io/gh/wp-labs/wp-connectors)
 ![Rust](https://img.shields.io/badge/rust-stable%2Bbeta-orange)
 
 ## 功能特性与编译选项
