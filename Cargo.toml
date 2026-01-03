@@ -40,12 +40,12 @@ toml = "~0.9"
 tokio = { version = "~1.48", features = ["full"] }
 bytes = "~1.11.0"
 winnow = "~0.7"
-educe = { version = "~0.6", default-features = false }
+educe = { version = "~0.6", default-features = false, features = ["Debug", "Default"] }
 sea-orm = { version = "~1.1", default-features = false, features = ["sqlx-mysql", "runtime-tokio-rustls"] }
 
 # Optional Feature Dependencies
 actix-web = "~4.12"
-reqwest = { version = "~0.13", features = ["json"] }
+reqwest = { version = "~0.12", features = ["json"] }
 prometheus = "~0.14"
 regex = "~1.12"
 lazy_static = "~1.5"
