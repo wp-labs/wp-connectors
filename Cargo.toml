@@ -40,7 +40,7 @@ toml = "~0.9"
 tokio = { version = "~1.48", features = ["full"] }
 bytes = "~1.11.0"
 winnow = "~0.7"
-educe = { version = "~0.4", default-features = false }
+educe = { version = "~0.6", default-features = false }
 sea-orm = { version = "~1.1", default-features = false, features = ["sqlx-mysql", "runtime-tokio-rustls"] }
 
 # Optional Feature Dependencies
