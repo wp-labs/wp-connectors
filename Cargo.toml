@@ -45,7 +45,7 @@ sea-orm = { version = "~1.1", default-features = false, features = ["sqlx-mysql"
 
 # Optional Feature Dependencies
 actix-web = "~4.12"
-reqwest = { version = "~0.12", features = ["json"] }
+reqwest = { version = "~0.13", features = ["json"] }
 prometheus = "~0.14"
 regex = "~1.12"
 lazy_static = "~1.5"
