@@ -6,8 +6,9 @@ use serde::Serialize;
 pub struct VictoriaLog {
     #[educe(Default = "127.0.0.1:9428")]
     pub endpoint: String,
-    #[educe(Default = "/insert/loki/api/v1/push")]
+    #[educe(Default = "/insert/jsonline")]
     pub insert_path: String,
+    pub create_time_field: Option<String>,
     #[educe(Default = 0.1)]
     pub flush_interval_secs: f64,
 }

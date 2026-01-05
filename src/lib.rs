@@ -1,3 +1,6 @@
+/// Tag key for access source identifier
+pub const WP_SRC_VAL: &str = "wp_src_val";
+
 // Kafka：默认启用（feature = "kafka" 是默认特性）
 #[cfg(feature = "kafka")]
 pub mod kafka;
@@ -16,7 +19,7 @@ pub mod doris;
 
 // VictoriaLog：可选功能，启用方式 `--features victorialog`
 #[cfg(feature = "victorialog")]
-pub mod victorialog;
+pub mod victorialogs;
 
 // Elasticsearch：预留可选特性，后续接入独立子 crate 时再暴露实现
 #[cfg(feature = "elasticsearch")]

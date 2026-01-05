@@ -8,9 +8,9 @@ use rdkafka_wrap::types::RDKafkaErrorCode;
 use rdkafka_wrap::{ClientConfig, KWConsumer, KWConsumerConf, Message};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use wp_model_core::model::TagSet;
 use wp_parse_api::RawData;
 
+use crate::WP_SRC_VAL;
 use wp_connector_api::{
     DataSource, SourceBatch, SourceError, SourceEvent, SourceReason, SourceResult, Tags,
 };
@@ -19,7 +19,7 @@ type AnyResult<T> = anyhow::Result<T>;
 
 pub struct KafkaSource {
     key: String,
-    tags: TagSet,
+    tags: Tags,
     consumer: KWConsumer,
     event_seq: u64,
 }
@@ -31,7 +31,7 @@ impl KafkaSource {
 
     pub async fn new(
         key: String,
-        tags: TagSet,
+        tags: Tags,
         group_id: &str,
         config: &KafkaSourceConf,
     ) -> AnyResult<Self> {
@@ -67,17 +67,13 @@ impl KafkaSource {
             .await
             .map(|msg| {
                 let payload = Bytes::copy_from_slice(msg.payload().unwrap_or(&[]));
-                self.tags.set_tag("access_source", msg.topic().to_string());
-                // 转换标签为 Tags
-                let mut stags = Tags::new();
-                for (k, v) in self.tags.item.iter() {
-                    stags.set(k.clone(), v.clone());
-                }
+                let mut stags = self.tags.clone();
+                stags.set(WP_SRC_VAL, msg.topic().to_string());
                 self.event_seq = self.event_seq.wrapping_add(1);
                 let event_id = self.event_seq;
                 vec![SourceEvent::new(
                     event_id,
-                    self.key.clone().into(),
+                    self.key.clone(),
                     RawData::Bytes(payload),
                     stags.into(),
                 )]

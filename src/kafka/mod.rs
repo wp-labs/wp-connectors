@@ -5,7 +5,7 @@
 //! - sink：KafkaSink（AsyncRawDataSink/AsyncRecordSink）
 //! - factory：Source/Sink 工厂与注册函数
 
-mod adapter;
+//mod adapter;
 mod config;
 mod factory;
 mod sink;

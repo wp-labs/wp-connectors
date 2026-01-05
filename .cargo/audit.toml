@@ -1,0 +1,16 @@
+# Cargo audit configuration
+# https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
+
+[advisories]
+# 忽略特定的安全公告
+# RUSTSEC-2023-0071: Marvin Attack on rsa crate
+# 原因：传递依赖，由 sqlx-mysql 引入，用于 MySQL SHA256 认证
+# 风险评估：MySQL 在内网环境，攻击者无法观察网络定时信息
+# 计划：等待 sqlx 上游升级到 rsa 0.10.x
+# 重新评估日期：2026-07-03（6个月后需要重新评估）
+ignore = [
+    "RUSTSEC-2023-0071",
+]
+
+# 注意：cargo-audit 不支持在配置文件中设置 expires
+# 需要在 CI 中或定期手动检查（建议：2026-07-03）

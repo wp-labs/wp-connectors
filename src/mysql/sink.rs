@@ -45,7 +45,11 @@ impl MysqlSink {
         format!(
             "INSERT INTO {} ({}) VALUES ",
             self.table,
-            self.cloumn_name.join(", ")
+            self.cloumn_name
+                .iter()
+                .map(|s| format!("`{}`", s))
+                .collect::<Vec<_>>()
+                .join(", ")
         )
     }
 

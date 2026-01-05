@@ -2,65 +2,57 @@
 resolver = "2"
 members = [".",]  # 当前包作为workspace成员
 
-
 [workspace.package]
-version = "0.5.6"
+version = "0.7.0"
 edition = "2024"
-description = "Unified connector for warp-parse system supporting both source and sink functionality"
+description = "Unified Kafka connector for wp-flow system supporting both source and sink functionality"
 authors = ["WP Labs Team"]
 license = "ELv2"
 repository = "https://github.com/wp-labs/wp-connectors"
 homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
-# WP Core Dependencies
-wp-connector-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.5.1-beta" }
-wp-parse-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.5.1-beta" }
-wp-model-core = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.5.1-beta" }
-wp-log = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
-wp-error = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
-wp-specs = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
-wp-conf-base = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
-wp-data-fmt = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.5.10-beta" }
+# WP Core Dependencies - 使用模板变量
+wp-connector-api = { git = "https://github.com/wp-labs/wp-open-api", tag= "v0.7.0-beta" }
+wp-parse-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.7.0-beta" }
+wp-model-core = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.7.0-beta" }
+wp-log = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.0-beta" }
+wp-error = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.0-beta" }
+wp-specs = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.0-beta" }
+wp-conf-base = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.0-beta" }
+wp-data-fmt = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.0-beta" }
 
-# Custom Dependencies
 wp-schema = { git = "https://github.com/wp-labs/wp-schema.git", tag= "v0.1.4-alpha" }
-## 上游 workspace 内部 crate 默认使用远程 git（develop 分支）。
 orion_exp = {  git = "https://github.com/galaxy-sec/orion-exp.git", tag = "v0.1.1" }
-
-# Core dependencies
-async-trait = "~0.1"
-anyhow = "~1.0"
-chrono = "~0.4"
-#clap = { version = "~4.0", features = ["derive"] }
-log = "~0.4.29"
-rdkafka-wrap = "~0.1"
-serde = { version = "~1.0", features = ["derive"] }
-serde_json = "~1.0"
-toml = "~0.9.8"
-tokio = { version = "~1.48", features = ["full"] }
-bytes = "~1.11.0"
-winnow = "~0.7"
-educe = { version = "~0.6.0", features = ["Debug", "Clone", "Copy"] }
-# WP Dependencies - using workspace versions
-
 # Orion Dependencies
 orion-error = "0.5.5"
 orion_conf = { version = "~0.3", features = ["yaml", "toml"] }
 
+# Core Runtime Dependencies
+async-trait = "~0.1"
+anyhow = "~1.0"
+chrono = "~0.4"
+log = "~0.4"
+rdkafka-wrap = { version = "~0.1"  }
+serde = { version = "~1.0", features = ["derive"] }
+serde_json = "~1.0"
+toml = "~0.9"
+tokio = { version = "~1.48", features = ["full"] }
+bytes = "~1.11.0"
+winnow = "~0.7"
+educe = { version = "~0.6", default-features = false, features = ["Debug", "Default"] }
 sea-orm = { version = "~1.1", default-features = false, features = ["sqlx-mysql", "runtime-tokio-rustls"] }
 
-
 # Optional Feature Dependencies
-actix-web = "~4.12.1"
-reqwest = { version = "0.12.25", features = ["json"] }
-prometheus = "~0.14.0"
-regex = "~1.12.2"
+actix-web = "~4.12"
+reqwest = { version = "~0.12", features = ["json"] }
+prometheus = "~0.14"
+regex = "~1.12"
 lazy_static = "~1.5"
-uuid = { version = "1.19.0", features = ["v4"] }
+uuid = { version = "~1.19", features = ["v4"] }
 
 # Dev Dependencies
-env_logger = "~0.11.8"
+env_logger = "~0.10"
 
 [package]
 name = "wp-connectors"
@@ -116,6 +108,7 @@ async-trait = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 log = { workspace = true }
+rdkafka-wrap = { workspace = true, optional = true  }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
@@ -133,7 +126,6 @@ prometheus = { workspace = true, optional = true }
 regex = { workspace = true, optional = true }
 lazy_static = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
-rdkafka-wrap =  { workspace = true , optional = true }
 
 [dev-dependencies]
 env_logger = { workspace = true }

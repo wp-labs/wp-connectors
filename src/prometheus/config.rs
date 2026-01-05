@@ -1,6 +1,10 @@
 use educe::Educe;
 use serde::Deserialize;
 use serde::Serialize;
+
+/// Prometheus configuration for metrics
+/// Note: The regex capture group names in default values correspond to tag constants
+/// (e.g., "access_source" corresponds to crate::ACCESS_SOURCE_TAG)
 #[derive(Educe, Deserialize, Serialize, PartialEq, Clone)]
 #[educe(Debug, Default)]
 pub struct Prometheus {

@@ -172,10 +172,10 @@ macro_rules! generate_extend_metrics {
         generate_metrics!($name; $($field), *);
         impl $name { pub fn extend_metrics(&mut self, data: &DataRecord) {
             use orion_exp::ValueGet0;
-            if let Some(Value::Chars(f)) = data.get2("pos_sn").opt().get_value() { self.pos_sn = f.clone(); }
-            if let Some(Value::Chars(f)) = data.get2("access_ip").opt().get_value() { self.access_ip = f.clone(); }
-            if let Some(Value::Chars(f)) = data.get2("log_desc").opt().get_value() { self.log_desc = f.clone(); }
-            if let Some(Value::Chars(f)) = data.get2("log_type").opt().get_value() { self.log_type = f.clone(); }
+            if let Some(Value::Chars(f)) = data.get2("pos_sn").opt().get_value() { self.pos_sn = f.to_string(); }
+            if let Some(Value::Chars(f)) = data.get2("access_ip").opt().get_value() { self.access_ip = f.to_string(); }
+            if let Some(Value::Chars(f)) = data.get2("log_desc").opt().get_value() { self.log_desc = f.to_string(); }
+            if let Some(Value::Chars(f)) = data.get2("log_type").opt().get_value() { self.log_type = f.to_string(); }
         }}
     }
 }

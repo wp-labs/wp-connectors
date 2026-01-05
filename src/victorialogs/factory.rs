@@ -6,16 +6,17 @@ use wp_connector_api::{
     ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
     SinkHandle, SinkReason, SinkResult, SinkSpec,
 };
+use wp_model_core::model::fmt_def::TextFmt;
 
-use super::config::VictoriaMetric;
-use super::exporter::VictoriaMetricExporter;
+use super::config::VictoriaLog;
+use super::sink::VictoriaLogSink;
 
-pub struct VictoriaMetricFactory;
+pub struct VictoriaLogSinkFactory;
 
 #[async_trait]
-impl SinkFactory for VictoriaMetricFactory {
+impl SinkFactory for VictoriaLogSinkFactory {
     fn kind(&self) -> &'static str {
-        "victoriametric"
+        "victorialogs"
     }
     fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
         let endpoint = spec
@@ -24,64 +25,70 @@ impl SinkFactory for VictoriaMetricFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if endpoint.trim().is_empty() {
-            return Err(SinkReason::sink("victoriametric.endpoint must not be empty").into());
+            return Err(SinkReason::sink("victorialog.endpoint must not be empty").into());
         }
         Ok(())
     }
     async fn build(&self, spec: &SinkSpec, _ctx: &SinkBuildCtx) -> SinkResult<SinkHandle> {
-        let mut conf = VictoriaMetric::default();
+        let mut conf = VictoriaLog::default();
         if let Some(s) = spec.params.get("endpoint").and_then(|v| v.as_str()) {
             conf.endpoint = s.to_string();
         }
-        if let Some(v) = spec.params.get("flush_interval_secs") {
-            if let Some(n) = v.as_f64() {
-                if n > 0.0 {
-                    conf.flush_interval_secs = n;
-                }
-            } else if let Some(s) = v.as_str()
-                && let Ok(n) = s.parse::<f64>()
-            {
-                conf.flush_interval_secs = n;
-            }
+        if let Some(s) = spec.params.get("insert_path").and_then(|v| v.as_str()) {
+            conf.insert_path = s.to_string();
         }
+        if let Some(s) = spec
+            .params
+            .get("create_time_field")
+            .and_then(|v| v.as_str())
+        {
+            conf.create_time_field = Some(s.to_string());
+        }
+        let fmt = spec
+            .params
+            .get("fmt")
+            .and_then(|v| v.as_str())
+            .map(TextFmt::from)
+            .unwrap_or(TextFmt::Json);
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
             .map_err(|err| {
                 SinkError::from(SinkReason::sink(format!(
-                    "build victoriametric client failed: {err}"
+                    "build victorialog client failed: {err}"
                 )))
             })?;
-        let mut sink = VictoriaMetricExporter::new(
+        let sink = VictoriaLogSink::new(
             conf.endpoint.clone(),
             conf.insert_path.clone(),
             client,
-            Duration::from_secs_f64(conf.flush_interval_secs),
+            fmt,
+            conf.create_time_field.clone(),
         );
-        sink.start_flush_task();
         Ok(SinkHandle::new(Box::new(sink)))
     }
 }
 
-impl SinkDefProvider for VictoriaMetricFactory {
+impl SinkDefProvider for VictoriaLogSinkFactory {
     fn sink_def(&self) -> ConnectorDef {
         ConnectorDef {
-            id: "victoriametric_sink".into(),
+            id: "victorialog_sink".into(),
             kind: self.kind().into(),
             scope: ConnectorScope::Sink,
-            allow_override: vec!["endpoint", "flush_interval_secs"]
+            allow_override: vec!["endpoint", "insert_path", "fmt"]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
-            default_params: victoriametric_defaults(),
-            origin: Some("wp-connectors:victoriametric_sink".into()),
+            default_params: victorialog_defaults(),
+            origin: Some("wp-connectors:victorialog_sink".into()),
         }
     }
 }
 
-fn victoriametric_defaults() -> ParamMap {
+fn victorialog_defaults() -> ParamMap {
     let mut params = ParamMap::new();
-    params.insert("endpoint".into(), json!("http://localhost:8480"));
-    params.insert("flush_interval_secs".into(), json!(5.0));
+    params.insert("endpoint".into(), json!("http://localhost:8481"));
+    params.insert("insert_path".into(), json!("/insert/json"));
+    params.insert("fmt".into(), json!("json"));
     params
 }

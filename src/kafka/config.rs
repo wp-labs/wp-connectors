@@ -1,7 +1,7 @@
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_error::{ToStructError, UvsValidationFrom};
 use serde::{Deserialize, Serialize};
-use wp_conf_base::structure::{GetTagStr, Validate};
+use wp_conf_base::structure::Validate;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct KafkaSourceConf {
@@ -10,14 +10,8 @@ pub struct KafkaSourceConf {
     pub topic: Vec<String>,
     pub config: Option<Vec<String>>,
     pub enable: bool,
-    #[serde(default)]
-    pub tags: Vec<String>,
-}
-
-impl GetTagStr for KafkaSourceConf {
-    fn tag_vec_str(&self) -> &Vec<String> {
-        &self.tags
-    }
+    //#[serde(default)]
+    //pub tags: Vec<String>,
 }
 
 impl Validate for KafkaSourceConf {
@@ -33,7 +27,7 @@ impl Validate for KafkaSourceConf {
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
-pub struct OutKafka {
+pub struct KafkaSinkConf {
     pub brokers: String,
     pub topic: String,
     pub num_partitions: i32,
@@ -41,7 +35,7 @@ pub struct OutKafka {
     pub config: Option<Vec<String>>,
 }
 
-impl OutKafka {
+impl KafkaSinkConf {
     pub fn new(topic: &str) -> Self {
         Self {
             topic: topic.to_string(),
@@ -64,12 +58,11 @@ impl Default for KafkaSourceConf {
                 "auto.offset.reset = earliest".to_string(),
             ]),
             enable: false,
-            tags: Vec::new(),
         }
     }
 }
 
-impl Default for OutKafka {
+impl Default for KafkaSinkConf {
     fn default() -> Self {
         Self {
             brokers: "localhost:9092".to_string(),

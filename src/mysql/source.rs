@@ -10,7 +10,6 @@ use wp_connector_api::{
     DataSource, SourceBatch, SourceError, SourceEvent, SourceReason, SourceResult, Tags,
 };
 use wp_log::info_data;
-use wp_model_core::model::TagSet;
 use wp_parse_api::RawData;
 
 type AnyResult<T> = anyhow::Result<T>;
@@ -30,7 +29,7 @@ impl MysqlSource {
         &self.key
     }
 
-    pub async fn new(key: String, tag_set: TagSet, config: &MySqlConf) -> AnyResult<Self> {
+    pub async fn new(key: String, tags: Tags, config: &MySqlConf) -> AnyResult<Self> {
         // table 在新版配置中为 Option<String>
         let table = config.table.as_deref().unwrap_or("");
         if table.trim().is_empty() {
@@ -38,11 +37,6 @@ impl MysqlSource {
         }
 
         wp_log::info_data!("[mysql] database: {:?}, table: {}", config.database, table);
-
-        let mut tags = Tags::new();
-        for (k, v) in &tag_set.item {
-            tags.set(k.clone(), v.clone());
-        }
 
         let checkpoint = MysqlSource::get_checkpoints(&key)?;
 
@@ -105,7 +99,7 @@ impl MysqlSource {
     fn create_event(&self, event_id: u64, json_str: String) -> SourceEvent {
         SourceEvent::new(
             event_id,
-            self.key.clone().into(),
+            self.key.clone(),
             RawData::from_string(json_str),
             self.tags.clone().into(),
         )
