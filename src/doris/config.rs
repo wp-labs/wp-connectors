@@ -17,6 +17,18 @@ pub struct DorisSinkConfig {
 }
 
 impl DorisSinkConfig {
+    /// 根据传入参数构建配置。
+    ///
+    /// # 参数
+    /// * `endpoint` - 不包含数据库名的 Doris/MySQL 连接串。
+    /// * `database` - 目标数据库名。
+    /// * `user`/`password` - 认证所需的账号密码。
+    /// * `table` - 目标表名。
+    /// * `create_table` - 可选建表模板，需包含 `{table}` 占位符。
+    /// * `pool_size`/`batch_size` - 可选的连接池大小与批量大小。
+    ///
+    /// # 返回
+    /// 返回一个填充好默认值并清理字符串的 [`DorisSinkConfig`]。
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         endpoint: String,
@@ -53,7 +65,13 @@ impl DorisSinkConfig {
         DEFAULT_BATCH_SIZE
     }
 
-    /// Returns a DSN that points to the configured database.
+    /// 返回带数据库后缀的连接串。
+    ///
+    /// # 参数
+    /// * `self` - 使用当前配置中的 endpoint/database。
+    ///
+    /// # 返回
+    /// * `String` - 形如 `<endpoint>/<database>[?params]` 的 DSN。
     pub fn database_dsn(&self) -> String {
         let (base, query) = split_query(&self.endpoint);
         let mut base = base.trim_end_matches('/').to_string();
@@ -69,6 +87,13 @@ impl DorisSinkConfig {
     }
 }
 
+/// 将 endpoint 拆分为主体和查询参数。
+///
+/// # 参数
+/// * `input` - 可能包含 `?` 参数的原始 endpoint。
+///
+/// # 返回
+/// `(base, query)`，若不存在参数则第二项为 `None`。
 fn split_query(input: &str) -> (&str, Option<&str>) {
     match input.split_once('?') {
         Some((left, right)) => (left, Some(right)),
