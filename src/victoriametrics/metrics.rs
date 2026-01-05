@@ -56,7 +56,7 @@ pub(crate) fn sink_type_values(data: &DataRecord) -> (SinkTypeMetrics, f64) {
     if let Some(Value::Chars(f)) = data.get2("sink_category").opt().get_value() {
         sink_type_metrics.sink_category = f.to_string();
     }
-    if let Some(Value::Chars(f)) = data.get2("sink_type").opt().get_value() {
+    if let Some(Value::Chars(f)) = data.get2("target").opt().get_value() {
         sink_type_metrics.sink_type = f.to_string();
     }
     (sink_type_metrics, 1.0)
@@ -94,7 +94,7 @@ pub(crate) fn send_sink(data: &DataRecord) -> (SinkMetrics, u64) {
     if let Some(Value::Chars(f)) = data.get2("sink_business").opt().get_value() {
         sink_metrics.sink_business = f.to_string();
     }
-    if let Some(Value::Chars(f)) = data.get2("sink_type").opt().get_value() {
+    if let Some(Value::Chars(f)) = data.get2("target").opt().get_value() {
         sink_metrics.sink_type = f.to_string();
     }
     let mut count = 0;
@@ -173,7 +173,7 @@ macro_rules! generate_extend_metrics {
         impl $name { pub fn extend_metrics(&mut self, data: &DataRecord) {
             use orion_exp::ValueGet0;
             if let Some(Value::Chars(f)) = data.get2("pos_sn").opt().get_value() { self.pos_sn = f.to_string(); }
-            if let Some(Value::Chars(f)) = data.get2("access_ip").opt().get_value() { self.access_ip = f.to_string(); }
+            if let Some(Value::Chars(f)) = data.get2("wp_src_ip").opt().get_value() { self.wp_src_ip = f.to_string(); }
             if let Some(Value::Chars(f)) = data.get2("log_desc").opt().get_value() { self.log_desc = f.to_string(); }
             if let Some(Value::Chars(f)) = data.get2("log_type").opt().get_value() { self.log_type = f.to_string(); }
         }}
@@ -184,8 +184,8 @@ generate_metrics!(SourceTypeMetrics; pid, source_type);
 generate_metrics!(SinkTypeMetrics; pid, sink_type, sink_category);
 generate_metrics!(RecvMetrics; pid, key, source_type);
 generate_metrics!(ParseAllMetrics; pid, parse, log_source, log_type);
-generate_extend_metrics!(ParseMetrics; pid, rule_name, access_ip, log_business, log_type, log_desc, pos_sn);
-generate_extend_metrics!(SinkMetrics; pid, name, access_ip, pos_sn, log_type, log_desc, log_business, sink_type, sink_business, sink_category);
+generate_extend_metrics!(ParseMetrics; pid, rule_name, wp_src_ip, log_business, log_type, log_desc, pos_sn);
+generate_extend_metrics!(SinkMetrics; pid, name, wp_src_ip, pos_sn, log_type, log_desc, log_business, sink_type, sink_business, sink_category);
 
 lazy_static! {
     pub static ref PID: String = Uuid::new_v4().to_string();

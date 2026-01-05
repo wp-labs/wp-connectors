@@ -15,7 +15,7 @@ pub struct VictoriaMetricFactory;
 #[async_trait]
 impl SinkFactory for VictoriaMetricFactory {
     fn kind(&self) -> &'static str {
-        "victoriametric"
+        "victoriametrics"
     }
     fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
         let endpoint = spec
@@ -30,9 +30,6 @@ impl SinkFactory for VictoriaMetricFactory {
     }
     async fn build(&self, spec: &SinkSpec, _ctx: &SinkBuildCtx) -> SinkResult<SinkHandle> {
         let mut conf = VictoriaMetric::default();
-        if let Some(s) = spec.params.get("endpoint").and_then(|v| v.as_str()) {
-            conf.endpoint = s.to_string();
-        }
         if let Some(v) = spec.params.get("flush_interval_secs") {
             if let Some(n) = v.as_f64() {
                 if n > 0.0 {
@@ -44,6 +41,10 @@ impl SinkFactory for VictoriaMetricFactory {
                 conf.flush_interval_secs = n;
             }
         }
+        if let Some(s) = spec.params.get("insert_url").and_then(|v| v.as_str()) {
+            conf.insert_url = s.to_string();
+        }
+
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
@@ -53,8 +54,7 @@ impl SinkFactory for VictoriaMetricFactory {
                 )))
             })?;
         let mut sink = VictoriaMetricExporter::new(
-            conf.endpoint.clone(),
-            conf.insert_path.clone(),
+            conf.insert_url.clone(),
             client,
             Duration::from_secs_f64(conf.flush_interval_secs),
         );
