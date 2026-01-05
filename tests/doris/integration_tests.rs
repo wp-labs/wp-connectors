@@ -53,16 +53,15 @@ fn integration_spec() -> SinkSpec {
 }
 
 fn integration_config() -> DorisSinkConfig {
-    DorisSinkConfig::new(
-        TEST_DORIS_ENDPOINT.into(),
-        TEST_DORIS_DB.into(),
-        TEST_DORIS_USER.into(),
-        TEST_DORIS_PASSWORD.into(),
-        TEST_DORIS_TABLE.into(),
-        Some(CREATE_TABLE_TEMPLATE.into()),
-        Some(2),
-        Some(1),
-    )
+    DorisSinkConfig::default()
+        .with_endpoint(TEST_DORIS_ENDPOINT)
+        .with_database(TEST_DORIS_DB)
+        .with_user(TEST_DORIS_USER)
+        .with_password(TEST_DORIS_PASSWORD)
+        .with_table(TEST_DORIS_TABLE)
+        .with_create_table(CREATE_TABLE_TEMPLATE)
+        .with_pool_size(2)
+        .with_batch_size(1)
 }
 
 #[tokio::test]

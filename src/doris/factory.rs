@@ -41,16 +41,21 @@ impl SinkFactory for DorisSinkFactory {
         let create_stmt = optional_string(spec, "create_table");
         let pool_size = parse_u32_param(spec, &["pool", "pool_size"])?;
         let batch_size = parse_usize_param(spec, &["batch", "batch_size"])?;
-        let cfg = DorisSinkConfig::new(
-            endpoint,
-            database,
-            user,
-            password,
-            table,
-            create_stmt,
-            pool_size,
-            batch_size,
-        );
+        let mut cfg = DorisSinkConfig::default()
+            .with_endpoint(endpoint)
+            .with_database(database)
+            .with_user(user)
+            .with_password(password)
+            .with_table(table);
+        if let Some(stmt) = create_stmt {
+            cfg = cfg.with_create_table(stmt);
+        }
+        if let Some(pool) = pool_size {
+            cfg = cfg.with_pool_size(pool);
+        }
+        if let Some(batch) = batch_size {
+            cfg = cfg.with_batch_size(batch);
+        }
         let sink = DorisSink::new(cfg).await.map_err(|err| {
             SinkError::from(SinkReason::sink(format!("init doris sink failed: {err}")))
         })?;
@@ -197,14 +202,15 @@ fn parse_usize_param(spec: &SinkSpec, keys: &[&str]) -> SinkResult<Option<usize>
 }
 
 fn doris_defaults() -> ParamMap {
+    let defaults = DorisSinkConfig::default();
     let mut params = ParamMap::new();
-    params.insert("endpoint".into(), json!("mysql://localhost:9030"));
-    params.insert("database".into(), json!("wp_data"));
-    params.insert("user".into(), json!("root"));
-    params.insert("password".into(), json!(""));
-    params.insert("table".into(), json!("wp_events"));
-    params.insert("pool".into(), json!(DorisSinkConfig::default_pool_size()));
-    params.insert("batch".into(), json!(DorisSinkConfig::default_batch_size()));
+    params.insert("endpoint".into(), json!(defaults.endpoint.clone()));
+    params.insert("database".into(), json!(defaults.database.clone()));
+    params.insert("user".into(), json!(defaults.user.clone()));
+    params.insert("password".into(), json!(defaults.password.clone()));
+    params.insert("table".into(), json!(defaults.table.clone()));
+    params.insert("pool".into(), json!(defaults.pool_size));
+    params.insert("batch".into(), json!(defaults.batch_size));
     params
 }
 
