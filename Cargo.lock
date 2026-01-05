@@ -3775,7 +3775,7 @@ dependencies = [
 
 [[package]]
 name = "wp-connectors"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "actix-web",
  "anyhow",
