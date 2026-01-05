@@ -84,7 +84,6 @@ victoriametrics = [
 elasticsearch = []
 clickhouse = []
 doris = ["dep:reqwest", "dep:sqlx"]
-clickhouse = []
 full = [
     "kafka",
     "doris",
