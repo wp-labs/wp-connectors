@@ -9,13 +9,12 @@ use wp_connector_api::{SinkReason, SinkResult};
 use wp_log::{error_data, info_data};
 use wp_model_core::model::{DataRecord, Value};
 
-use crate::victoriametric::metrics::{sink_type_stat, source_type_stat};
+use crate::victoriametrics::metrics::{sink_type_stat, source_type_stat};
 
 use super::metrics::{parse_all_stat, parse_success_stat, receive_data_stat, sink_stat};
 
 pub(crate) struct VictoriaMetricExporter {
-    endpoint: String,
-    insert_path: String,
+    insert_url: String,
     client: reqwest::Client,
     flush_interval: Duration,
     stop_tx: Option<oneshot::Sender<()>>,
@@ -25,8 +24,7 @@ pub(crate) struct VictoriaMetricExporter {
 impl Clone for VictoriaMetricExporter {
     fn clone(&self) -> Self {
         Self {
-            endpoint: self.endpoint.clone(),
-            insert_path: self.insert_path.clone(),
+            insert_url: self.insert_url.clone(),
             client: self.client.clone(),
             flush_interval: self.flush_interval,
             stop_tx: None,
@@ -37,23 +35,21 @@ impl Clone for VictoriaMetricExporter {
 
 impl VictoriaMetricExporter {
     pub(crate) fn new(
-        endpoint: String,
-        insert_path: String,
+        insert_url: String,
         client: reqwest::Client,
         flush_interval: Duration,
     ) -> Self {
         Self {
-            endpoint,
-            insert_path,
-            client,
+            insert_url,
             flush_interval,
             stop_tx: None,
             flush_handle: None,
+            client,
         }
     }
 
     pub(crate) async fn save_metric_to_victoriametric(&self) -> SinkResult<()> {
-        Self::push_metrics(&self.client, &self.endpoint, &self.insert_path).await
+        Self::push_metrics(&self.client, &self.insert_url).await
     }
 
     pub(crate) fn start_flush_task(&mut self) {
@@ -103,11 +99,7 @@ impl VictoriaMetricExporter {
         }
     }
 
-    async fn push_metrics(
-        client: &reqwest::Client,
-        endpoint: &str,
-        insert_path: &str,
-    ) -> SinkResult<()> {
+    async fn push_metrics(client: &reqwest::Client, insert_url: &str) -> SinkResult<()> {
         let encoder = TextEncoder::new();
         let metric_families = prometheus::gather();
         if metric_families.is_empty() {
@@ -121,9 +113,9 @@ impl VictoriaMetricExporter {
                     .with_detail(e.to_string()),
             );
         }
-        let vm_insert_url = format!("{}{}", endpoint, insert_path);
+
         let response = client
-            .post(&vm_insert_url)
+            .post(insert_url)
             .body(buffer)
             .send()
             .await
@@ -221,7 +213,7 @@ impl wp_connector_api::AsyncRawDataSink for VictoriaMetricExporter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::victoriametric::metrics::{
+    use crate::victoriametrics::metrics::{
         PARSE_ALL, PARSE_SUCCESS, PID, RECV_FROM_SOURCE, SEND_TO_SINK, SINK_TYPES,
     };
     use wp_connector_api::{AsyncCtrl, AsyncRecordSink};
@@ -234,8 +226,7 @@ mod tests {
             .build()
             .expect("client");
         VictoriaMetricExporter::new(
-            "http://127.0.0.1:8428".into(),
-            "/insert".into(),
+            "http://127.0.0.1:8428/insert".into(),
             client,
             Duration::from_secs(1),
         )
@@ -275,14 +266,12 @@ mod tests {
 
         // Sink stage
         let sink_name = "sink-target";
-        let sink_type = "sink-type";
         let sink_category = "sink-category";
         let sink_business = "sink-business";
         let log_business = "log-biz";
         let mut sink_record_data = DataRecord::default();
         sink_record_data.append(DataField::from_chars("stage", "Sink"));
-        sink_record_data.append(DataField::from_chars("target", sink_name));
-        sink_record_data.append(DataField::from_chars("sink_type", sink_type));
+        sink_record_data.append(DataField::from_chars("target", sink_name)); // 使用 sink_name
         sink_record_data.append(DataField::from_chars("sink_category", sink_category));
         sink_record_data.append(DataField::from_chars("sink_business", sink_business));
         sink_record_data.append(DataField::from_chars("log_business", log_business));
@@ -295,12 +284,12 @@ mod tests {
             "",
             "",
             log_business,
-            sink_type,
+            sink_name, // 当前逻辑中 sink_type 和 name 都是从 target 获取，所以这里使用 sink_name
             sink_business,
             sink_category,
         ]);
         let sink_before = sink_counter.get();
-        let sink_gauge = SINK_TYPES.with_label_values(&[PID.as_str(), sink_type, sink_category]);
+        let sink_gauge = SINK_TYPES.with_label_values(&[PID.as_str(), sink_name, sink_category]); // target 字段是 sink_name
         sink_gauge.set(0.0);
         exporter.sink_record(&sink_record_data).await.unwrap();
         assert_eq!(sink_counter.get(), sink_before + 1);

@@ -63,7 +63,7 @@ description.workspace = true
 [features]
 # 默认只编译 Kafka 相关代码；需要 Prometheus 导出器时启用 `prometheus` 特性
 #default = ["kafka"]
-default = ["kafka", "mysql", "prometheus", "victoriametric", "victorialogs"]
+default = ["kafka", "mysql", "prometheus", "victoriametrics", "victorialogs"]
 kafka = ["dep:rdkafka-wrap"]
 mysql = []
 victorialogs = []
@@ -74,7 +74,7 @@ prometheus = [
     "dep:lazy_static",
     "dep:uuid",
 ]
-victoriametric = [
+victoriametrics = [
     "dep:reqwest",
     "dep:prometheus",
     "dep:regex",
@@ -90,7 +90,7 @@ full = [
     "elasticsearch",
     "clickhouse",
     "victorialogs",
-    "victoriametric",
+    "victoriametrics",
 ]
 
 [dependencies]
