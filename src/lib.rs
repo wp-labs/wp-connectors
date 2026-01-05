@@ -13,6 +13,10 @@ pub mod mysql;
 #[cfg(feature = "prometheus")]
 pub mod prometheus;
 
+// Doris：可选功能，启用方式 `--features doris`
+#[cfg(feature = "doris")]
+pub mod doris;
+
 // VictoriaLog：可选功能，启用方式 `--features victorialog`
 #[cfg(feature = "victorialogs")]
 pub mod victorialogs;

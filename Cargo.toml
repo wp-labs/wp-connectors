@@ -63,7 +63,7 @@ description.workspace = true
 [features]
 # 默认只编译 Kafka 相关代码；需要 Prometheus 导出器时启用 `prometheus` 特性
 #default = ["kafka"]
-default = ["kafka", "mysql", "prometheus", "victoriametrics", "victorialogs"]
+default = ["kafka", "mysql", "prometheus", "victoriametrics", "victorialogs", "doris"]
 kafka = ["dep:rdkafka-wrap"]
 mysql = []
 victorialogs = []
@@ -83,8 +83,10 @@ victoriametrics = [
 ]
 elasticsearch = []
 clickhouse = []
+doris = ["dep:reqwest", "dep:sqlx"]
 full = [
     "kafka",
+    "doris",
     "mysql",
     "prometheus",
     "elasticsearch",
@@ -124,7 +126,8 @@ bytes = { workspace = true }
 winnow = { workspace = true }
 educe = { workspace = true }
 sea-orm = { workspace = true }
-
+# sqlx = { version = "0.8.2", default-features = false, features = ["runtime-tokio", "macros", "mysql", "tls-native-tls"], optional = true }
+sqlx = { version = "0.8", default-features = false, features = ["mysql", "runtime-tokio", "tls-native-tls"] , optional = true }
 # Optional Dependencies - using workspace versions
 actix-web = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }

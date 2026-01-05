@@ -12,6 +12,7 @@
 - kafka：Kafka Source/Sink 与工厂（默认开启）
 - prometheus：Prometheus 导出器（actix-web + prometheus），需显式开启
 - elasticsearch：预留特性位（未来接入子 crate 后启用），目前仅占位
+- doris：Doris Source/Sink（HTTP Stream Load + 查询 API），需显式开启
 
 构建命令示例
 - 仅 Kafka（默认）：
@@ -29,6 +30,7 @@
 模块导出
 - 启用 kafka 特性：`wp_connectors::kafka::{KafkaSourceFactory, KafkaSinkFactory, register_factories, ..}`
 - 启用 prometheus 特性：`wp_connectors::prometheus::{register_builder, ..}`
+- 启用 doris 特性：`wp_connectors::doris::{DorisSourceFactory, DorisSinkFactory, ..}`
 - 启用 elasticsearch 特性（占位）：将来会通过 `wp_connectors::elasticsearch::*` 暴露子 crate 内容
 
 测试
