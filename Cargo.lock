@@ -3730,7 +3730,7 @@ dependencies = [
  "serde_json",
  "toml",
  "wp-connector-api 0.7.0",
- "wp-model-core 0.7.0",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
 ]
 
 [[package]]
@@ -3770,8 +3770,8 @@ dependencies = [
  "smol_str",
  "thiserror 2.0.17",
  "toml",
- "wp-model-core 0.7.0",
- "wp-parse-api 0.7.0",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
+ "wp-parse-api 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
 ]
 
 [[package]]
@@ -3807,8 +3807,8 @@ dependencies = [
  "wp-data-fmt",
  "wp-error 0.7.0",
  "wp-log 0.7.0",
- "wp-model-core 0.7.0",
- "wp-parse-api 0.7.0",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
+ "wp-parse-api 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0)",
  "wp-schema",
  "wp-specs",
 ]
@@ -3821,7 +3821,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "wp-model-core 0.7.0",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
 ]
 
 [[package]]
@@ -3904,6 +3904,23 @@ dependencies = [
 [[package]]
 name = "wp-model-core"
 version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0#0eb0f49356094b1b622ec4c44e35896c8c1cb819"
+dependencies = [
+ "arcstr",
+ "chrono",
+ "ipnet",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "smallvec",
+ "smol_str",
+ "thiserror 2.0.17",
+ "wildmatch",
+]
+
+[[package]]
+name = "wp-model-core"
+version = "0.7.0"
 source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta#e6b58c23c870dbec205747f9389ceadc6441e461"
 dependencies = [
  "arcstr",
@@ -3935,6 +3952,20 @@ dependencies = [
 [[package]]
 name = "wp-parse-api"
 version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0#0eb0f49356094b1b622ec4c44e35896c8c1cb819"
+dependencies = [
+ "bytes",
+ "derive_more",
+ "orion-error",
+ "serde",
+ "serde_derive",
+ "thiserror 2.0.17",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0)",
+]
+
+[[package]]
+name = "wp-parse-api"
+version = "0.7.0"
 source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta#e6b58c23c870dbec205747f9389ceadc6441e461"
 dependencies = [
  "bytes",
@@ -3943,7 +3974,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "thiserror 2.0.17",
- "wp-model-core 0.7.0",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
 ]
 
 [[package]]
