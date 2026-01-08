@@ -3806,7 +3806,7 @@ dependencies = [
  "wp-connector-api 0.7.0",
  "wp-data-fmt",
  "wp-error 0.7.0",
- "wp-log 0.7.0",
+ "wp-log 0.7.0 (git+https://github.com/wp-labs/wp-infras?tag=v0.7.0)",
  "wp-model-core 0.7.0",
  "wp-parse-api 0.7.0",
  "wp-schema",
@@ -3855,13 +3855,27 @@ dependencies = [
  "thiserror 2.0.17",
  "unicode-segmentation",
  "wp-connector-api 0.7.0",
- "wp-log 0.7.0",
+ "wp-log 0.7.0 (git+https://github.com/wp-labs/wp-infras?tag=v0.7.0-beta)",
 ]
 
 [[package]]
 name = "wp-log"
 version = "0.5.10"
 source = "git+https://github.com/wp-labs/wp-infras?tag=v0.5.10-beta#fdb472fbc5c28be2d21c15b6c28fd5641c704195"
+dependencies = [
+ "anyhow",
+ "getset",
+ "log",
+ "log4rs",
+ "orion_conf",
+ "serde",
+ "strum_macros",
+]
+
+[[package]]
+name = "wp-log"
+version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-infras?tag=v0.7.0#340f9daae00a4a425c4502b7c48eac6a8a56ea3d"
 dependencies = [
  "anyhow",
  "getset",
