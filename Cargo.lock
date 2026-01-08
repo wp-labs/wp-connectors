@@ -3729,8 +3729,8 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
- "wp-connector-api 0.7.0",
- "wp-model-core 0.7.0",
+ "wp-connector-api 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
 ]
 
 [[package]]
@@ -3756,6 +3756,27 @@ dependencies = [
 [[package]]
 name = "wp-connector-api"
 version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0#0eb0f49356094b1b622ec4c44e35896c8c1cb819"
+dependencies = [
+ "anyhow",
+ "async-broadcast",
+ "async-trait",
+ "derive_more",
+ "once_cell",
+ "orion-error",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "smol_str",
+ "thiserror 2.0.17",
+ "toml",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0)",
+ "wp-parse-api 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0)",
+]
+
+[[package]]
+name = "wp-connector-api"
+version = "0.7.0"
 source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta#e6b58c23c870dbec205747f9389ceadc6441e461"
 dependencies = [
  "anyhow",
@@ -3770,8 +3791,8 @@ dependencies = [
  "smol_str",
  "thiserror 2.0.17",
  "toml",
- "wp-model-core 0.7.0",
- "wp-parse-api 0.7.0",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
+ "wp-parse-api 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
 ]
 
 [[package]]
@@ -3803,12 +3824,12 @@ dependencies = [
  "uuid",
  "winnow",
  "wp-conf-base",
- "wp-connector-api 0.7.0",
+ "wp-connector-api 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
  "wp-data-fmt",
  "wp-error 0.7.0",
  "wp-log 0.7.0",
- "wp-model-core 0.7.0",
- "wp-parse-api 0.7.0",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
+ "wp-parse-api 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
  "wp-schema",
  "wp-specs",
 ]
@@ -3821,7 +3842,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "wp-model-core 0.7.0",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
 ]
 
 [[package]]
@@ -3854,7 +3875,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.17",
  "unicode-segmentation",
- "wp-connector-api 0.7.0",
+ "wp-connector-api 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
  "wp-log 0.7.0",
 ]
 
@@ -3897,6 +3918,23 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "smallvec",
+ "thiserror 2.0.17",
+ "wildmatch",
+]
+
+[[package]]
+name = "wp-model-core"
+version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0#0eb0f49356094b1b622ec4c44e35896c8c1cb819"
+dependencies = [
+ "arcstr",
+ "chrono",
+ "ipnet",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "smallvec",
+ "smol_str",
  "thiserror 2.0.17",
  "wildmatch",
 ]
@@ -3935,6 +3973,20 @@ dependencies = [
 [[package]]
 name = "wp-parse-api"
 version = "0.7.0"
+source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0#0eb0f49356094b1b622ec4c44e35896c8c1cb819"
+dependencies = [
+ "bytes",
+ "derive_more",
+ "orion-error",
+ "serde",
+ "serde_derive",
+ "thiserror 2.0.17",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0)",
+]
+
+[[package]]
+name = "wp-parse-api"
+version = "0.7.0"
 source = "git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta#e6b58c23c870dbec205747f9389ceadc6441e461"
 dependencies = [
  "bytes",
@@ -3943,7 +3995,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "thiserror 2.0.17",
- "wp-model-core 0.7.0",
+ "wp-model-core 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0-beta)",
 ]
 
 [[package]]
@@ -3967,12 +4019,12 @@ dependencies = [
 [[package]]
 name = "wp-specs"
 version = "0.7.0"
-source = "git+https://github.com/wp-labs/wp-infras?tag=v0.7.0-beta#99462d0176d59c64293e3f85f6e833beb04f6c45"
+source = "git+https://github.com/wp-labs/wp-infras?tag=v0.7.0#340f9daae00a4a425c4502b7c48eac6a8a56ea3d"
 dependencies = [
  "serde",
  "toml",
  "wildmatch",
- "wp-connector-api 0.7.0",
+ "wp-connector-api 0.7.0 (git+https://github.com/wp-labs/wp-open-api?tag=v0.7.0)",
 ]
 
 [[package]]
