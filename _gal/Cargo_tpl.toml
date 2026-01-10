@@ -26,7 +26,7 @@ wp-schema = { git = "https://github.com/wp-labs/wp-schema.git", tag= "v0.1.4-alp
 orion_exp = {  git = "https://github.com/galaxy-sec/orion-exp.git", tag = "v0.1.1" }
 # Orion Dependencies
 orion-error = "0.5"
-orion_conf = { version = "0.3", features = ["yaml", "toml"] }
+orion_conf = { version = "0.4", features = ["yaml", "toml"] }
 
 # Core Runtime Dependencies
 async-trait = "0.1"
