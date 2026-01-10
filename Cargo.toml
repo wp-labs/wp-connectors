@@ -3,30 +3,30 @@ resolver = "2"
 members = [".",]  # 当前包作为workspace成员
 
 [workspace.package]
-version = "0.7.2"
+version = "0.7.3"
 edition = "2024"
 description = "Unified Kafka connector for wp-flow system supporting both source and sink functionality"
 authors = ["WP Labs Team"]
-license = "ELv2"
+license = "Elastic-2.0"
 repository = "https://github.com/wp-labs/wp-connectors"
 homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
 # WP Core Dependencies - 使用模板变量
-wp-connector-api = { git = "https://github.com/wp-labs/wp-open-api", tag= "v0.7.0" }
-wp-parse-api = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.7.0" }
-wp-model-core = { git = "https://github.com/wp-labs/wp-open-api", tag = "v0.7.0" }
-wp-log = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.1" }
-wp-error = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.1" }
-wp-specs = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.1" }
-wp-conf-base = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.1" }
-wp-data-fmt = { git = "https://github.com/wp-labs/wp-infras", tag = "v0.7.1" }
+wp-connector-api = "0.7"
+wp-parse-api =  "0.7"
+wp-model-core = "0.7"
+wp-log =  "0.1"
+wp-error =  "0.7"
+wp-specs =  "0.7"
+wp-conf-base = "0.1"
+wp-data-fmt = "0.1"
 
-wp-schema = { git = "https://github.com/wp-labs/wp-schema.git", tag= "v0.1.5-beta" }
+wp-schema = { git = "https://github.com/wp-labs/wp-schema.git", tag= "v0.1.6-beta" }
 orion_exp = {  git = "https://github.com/galaxy-sec/orion-exp.git", tag = "v0.1.1" }
 # Orion Dependencies
 orion-error = "0.5"
-orion_conf = { version = "0.3", features = ["yaml", "toml"] }
+orion_conf = { version = "0.4", features = ["yaml", "toml"] }
 
 # Core Runtime Dependencies
 async-trait = "0.1"
