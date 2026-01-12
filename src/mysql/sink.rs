@@ -42,8 +42,9 @@ impl MysqlSink {
     }
 
     fn base_insert_prefix(&self) -> String {
+        // 使用 INSERT IGNORE：若数据库已写入但客户端因断连未收到响应，重试时避免主键/唯一键冲突
         format!(
-            "INSERT INTO {} ({}) VALUES ",
+            "INSERT IGNORE INTO {} ({}) VALUES ",
             self.table,
             self.cloumn_name
                 .iter()
@@ -104,8 +105,8 @@ impl MysqlSink {
                         Ok(_) => {}
                         Err(e) => {
                             return Err(SinkError::from(SinkReason::Sink(format!(
-                                "mysql execute fail: {}",
-                                e
+                                "mysql execute fail: {}, excute sql: {}",
+                                e, sql
                             ))));
                         }
                     }
@@ -165,12 +166,12 @@ impl AsyncRecordSink for MysqlSink {
             sql.push_str(&vals.join(","));
             sql.push(';');
             let state = Statement::from_string(self.db.get_database_backend(), sql);
-            self.db.execute(state).await.map_err(|e| {
-                SinkError::from(SinkReason::Sink(format!(
-                    "mysql exec cloumns:{:?}, fail: {}",
-                    self.cloumn_name, e
-                )))
-            })?;
+            if let Err(e) = self.db.execute(state.clone()).await {
+                return Err(SinkError::from(SinkReason::Sink(format!(
+                    "mysql exec cloumns:{:?}, fail: {}, sql: {}",
+                    self.cloumn_name, e, state
+                ))));
+            }
         }
         self.values.clear();
         Ok(())
