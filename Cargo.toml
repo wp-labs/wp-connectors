@@ -54,7 +54,7 @@ lazy_static = "1.5"
 uuid = { version = "1.19", features = ["v4"] }
 
 # Dev Dependencies
-env_logger = "0.10"
+env_logger = "0.11"
 
 [package]
 name = "wp-connectors"
