@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
+use tokio::time::sleep;
 use wp_connector_api::{
     AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkError, SinkReason, SinkResult,
 };
@@ -43,6 +45,73 @@ impl VictoriaLogSink {
         now
     }
 
+    /// 构建单条 JSON line 载荷，供单条或批量发送复用。
+    fn build_jsonline(&self, data: &DataRecord) -> SinkResult<String> {
+        let mut value_map = data
+            .items
+            .clone()
+            .into_iter()
+            .map(|item| (item.get_name().to_string(), item.get_value().to_string()))
+            .collect::<HashMap<String, String>>();
+        let timestamp = self.resolve_timestamp_str(data);
+        let fmt = FormatType::from(&self.fmt);
+        let formatted_msg = fmt.format_record(data);
+        value_map.insert("_msg".to_string(), formatted_msg);
+        value_map.insert("_time".to_string(), timestamp);
+        serde_json::to_string(&value_map).map_err(|e| {
+            SinkError::from(SinkReason::Sink(format!(
+                "build jsonline for victorialogs flush fail: {}",
+                e
+            )))
+        })
+    }
+
+    async fn send_payload(&self, payload: String) -> SinkResult<()> {
+        // 重试次数
+        const MAX_ATTEMPTS: usize = 3;
+        // 是重试之间的退避时间
+        const BACKOFF_MS: [u64; 2] = [200, 500];
+        let url = format!("{}{}", self.endpoint, self.insert_path);
+
+        for attempt in 0..MAX_ATTEMPTS {
+            match self.client.post(&url).body(payload.clone()).send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_success() {
+                        return Ok(());
+                    }
+                    error_data!("reqwest send error, text: {:?}", resp.text().await);
+                    if !status.is_server_error() {
+                        return Err(SinkError::from(SinkReason::Sink(
+                            "reqwest send error".to_string(),
+                        )));
+                    }
+                }
+                Err(e) => {
+                    error_data!("reqwest send error, text: {:?}", e);
+                    if !(e.is_timeout() || e.is_connect()) {
+                        return Err(SinkError::from(SinkReason::Sink(format!(
+                            "reqwest send fail: {}",
+                            e
+                        ))));
+                    }
+                }
+            }
+
+            if attempt + 1 < MAX_ATTEMPTS {
+                let delay = BACKOFF_MS
+                    .get(attempt)
+                    .copied()
+                    .unwrap_or_else(|| BACKOFF_MS[BACKOFF_MS.len() - 1]);
+                sleep(Duration::from_millis(delay)).await;
+            }
+        }
+
+        Err(SinkError::from(SinkReason::Sink(
+            "reqwest send fail after retries".to_string(),
+        )))
+    }
+
     pub(crate) fn new(
         endpoint: String,
         insert_path: String,
@@ -63,55 +132,23 @@ impl VictoriaLogSink {
 #[async_trait]
 impl AsyncRecordSink for VictoriaLogSink {
     async fn sink_record(&mut self, data: &DataRecord) -> SinkResult<()> {
-        let mut value_map = data
-            .items
-            .clone()
-            .into_iter()
-            .map(|item| (item.get_name().to_string(), item.get_value().to_string()))
-            .collect::<HashMap<String, String>>();
-        let timestamp = self.resolve_timestamp_str(data);
-        let fmt = FormatType::from(&self.fmt);
-        let formatted_msg = fmt.format_record(data);
-        value_map.insert("_msg".to_string(), formatted_msg.clone());
-        value_map.insert("_time".to_string(), timestamp);
-        let res = serde_json::to_string(&value_map).map_err(|e| {
-            SinkError::from(SinkReason::Sink(format!(
-                "build jsonline for victorialogs flush fail: {}",
-                e
-            )))
-        })?;
-
-        match self
-            .client
-            .post(format!("{}{}", self.endpoint, self.insert_path))
-            .body(res)
-            .send()
-            .await
-        {
-            Ok(resp) => {
-                if !resp.status().is_success() {
-                    error_data!("reqwest send error, text: {:?}", resp.text().await);
-                    return Err(SinkError::from(SinkReason::Sink(
-                        "reqwest send error".to_string(),
-                    )));
-                }
-            }
-            Err(e) => {
-                error_data!("reqwest send error, text: {:?}", e);
-                return Err(SinkError::from(SinkReason::Sink(format!(
-                    "reqwest send fail: {}",
-                    e
-                ))));
-            }
-        };
-        Ok(())
+        let res = self.build_jsonline(data)?;
+        self.send_payload(res).await
     }
 
     async fn sink_records(&mut self, data: Vec<Arc<DataRecord>>) -> SinkResult<()> {
-        for record in data {
-            self.sink_record(record.as_ref()).await?;
+        if data.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        let mut buf = String::new();
+        for (idx, record) in data.iter().enumerate() {
+            let line = self.build_jsonline(record.as_ref())?;
+            if idx > 0 {
+                buf.push('\n');
+            }
+            buf.push_str(&line);
+        }
+        self.send_payload(buf).await
     }
 }
 
@@ -147,6 +184,7 @@ impl AsyncRawDataSink for VictoriaLogSink {
 mod tests {
     use super::*;
     use httpmock::prelude::*;
+    use serde_json::Value as JsonValue;
     use std::time::Duration;
     use wp_connector_api::AsyncRecordSink;
     use wp_model_core::model::{DataField, DataRecord};
@@ -177,6 +215,85 @@ mod tests {
 
         let result = sink.sink_record(&record).await;
         assert!(result.is_ok(), "sink_record should return Ok");
+    }
+
+    /// 创建用于测试的 VictoriaLogSink 实例（mock server）
+    fn create_mock_sink(server: &MockServer) -> VictoriaLogSink {
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .expect("Failed to create client");
+
+        VictoriaLogSink::new(
+            server.base_url(),
+            "/insert".into(),
+            client,
+            TextFmt::Json,
+            None,
+        )
+    }
+
+    #[test]
+    fn test_build_jsonline_contains_msg_and_time() {
+        let mut record = DataRecord::default();
+        record.append(DataField::from_chars("level", "info"));
+        let sink = create_test_sink(None);
+        let line = sink.build_jsonline(&record).expect("构建 jsonline 失败");
+        let parsed: JsonValue = serde_json::from_str(&line).expect("解析 json 失败");
+
+        assert_eq!(parsed["level"], "info");
+        assert!(parsed.get("_msg").is_some(), "_msg 字段应存在");
+        let time_val = parsed
+            .get("_time")
+            .and_then(|v| v.as_str())
+            .expect("_time 应为字符串");
+        assert!(time_val.parse::<i64>().is_ok(), "_time 应能解析为 i64");
+    }
+
+    #[tokio::test]
+    async fn test_send_payload_success() {
+        let server = MockServer::start_async().await;
+        let mock_200 = server.mock(|when, then| {
+            when.method(POST).path("/insert");
+            then.status(200);
+        });
+
+        let sink = create_mock_sink(&server);
+        let result = sink.send_payload("{}".to_string()).await;
+
+        assert!(result.is_ok(), "send_payload 应返回 Ok");
+        assert_eq!(mock_200.hits(), 1, "仅应发送一次请求");
+    }
+
+    #[tokio::test]
+    async fn test_send_payload_retry_on_server_error() {
+        let server = MockServer::start_async().await;
+        let mock_500 = server.mock(|when, then| {
+            when.method(POST).path("/insert");
+            then.status(500);
+        });
+
+        let sink = create_mock_sink(&server);
+        let result = sink.send_payload("{}".to_string()).await;
+
+        assert!(result.is_err(), "服务端错误应返回 Err");
+        assert_eq!(mock_500.hits(), 3, "应重试 3 次");
+    }
+
+    #[tokio::test]
+    async fn test_send_payload_no_retry_on_client_error() {
+        let server = MockServer::start_async().await;
+        let mock_400 = server.mock(|when, then| {
+            when.method(POST).path("/insert");
+            then.status(400);
+        });
+
+        let sink = create_mock_sink(&server);
+        let result = sink.send_payload("{}".to_string()).await;
+
+        assert!(result.is_err(), "客户端错误应返回 Err");
+        assert_eq!(mock_400.hits(), 1, "4xx 不应重试");
     }
 
     /// 创建用于测试的 VictoriaLogSink 实例

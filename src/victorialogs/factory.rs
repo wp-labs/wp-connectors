@@ -44,6 +44,18 @@ impl SinkFactory for VictoriaLogSinkFactory {
         {
             conf.create_time_field = Some(s.to_string());
         }
+        if let Some(v) = spec.params.get("request_timeout_secs") {
+            if let Some(n) = v.as_f64() {
+                if n > 0.0 {
+                    conf.request_timeout_secs = n;
+                }
+            } else if let Some(s) = v.as_str()
+                && let Ok(n) = s.parse::<f64>()
+                && n > 0.0
+            {
+                conf.request_timeout_secs = n;
+            }
+        }
         let fmt = spec
             .params
             .get("fmt")
@@ -51,7 +63,7 @@ impl SinkFactory for VictoriaLogSinkFactory {
             .map(TextFmt::from)
             .unwrap_or(TextFmt::Json);
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs_f64(conf.request_timeout_secs))
             .build()
             .map_err(|err| {
                 SinkError::from(SinkReason::sink(format!(
@@ -75,7 +87,7 @@ impl SinkDefProvider for VictoriaLogSinkFactory {
             id: "victorialog_sink".into(),
             kind: self.kind().into(),
             scope: ConnectorScope::Sink,
-            allow_override: vec!["endpoint", "insert_path", "fmt"]
+            allow_override: vec!["endpoint", "insert_path", "fmt", "request_timeout_secs"]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
@@ -90,5 +102,6 @@ fn victorialog_defaults() -> ParamMap {
     params.insert("endpoint".into(), json!("http://localhost:8481"));
     params.insert("insert_path".into(), json!("/insert/json"));
     params.insert("fmt".into(), json!("json"));
+    params.insert("request_timeout_secs".into(), json!(60.0));
     params
 }
