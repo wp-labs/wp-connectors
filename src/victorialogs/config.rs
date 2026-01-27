@@ -9,6 +9,7 @@ pub struct VictoriaLog {
     #[educe(Default = "/insert/jsonline")]
     pub insert_path: String,
     pub create_time_field: Option<String>,
-    #[educe(Default = 0.1)]
-    pub flush_interval_secs: f64,
+    /// 请求超时（秒），数据量大时可适当调高。
+    #[educe(Default = 60.0)]
+    pub request_timeout_secs: f64,
 }
