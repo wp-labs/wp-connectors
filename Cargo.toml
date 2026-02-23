@@ -25,7 +25,7 @@ wp-data-fmt = "0.2"
 wp-schema = { git = "https://github.com/wp-labs/wp-schema.git", tag= "v0.1.6-beta" }
 orion_exp = {  git = "https://github.com/galaxy-sec/orion-exp.git", tag = "v0.1.1" }
 # Orion Dependencies
-orion-error = "0.5"
+orion-error = "0.6"
 orion_conf = { version = "0.4", features = ["yaml", "toml"] }
 
 # Core Runtime Dependencies
