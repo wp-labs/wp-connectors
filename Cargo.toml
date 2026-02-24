@@ -14,7 +14,7 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 [workspace.dependencies]
 # WP Core Dependencies - 使用模板变量
 wp-connector-api = "0.7.2"
-wp-parse-api =  "0.7"
+wp-parse-api =  "0.8"
 wp-model-core = "0.8"
 wp-log =  "0.1"
 wp-error =  "0.7"
