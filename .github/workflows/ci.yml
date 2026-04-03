@@ -55,8 +55,8 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      # - name: Debug
-      #   uses: mxschmitt/action-tmate@v3
+      - name: Debug
+        uses: mxschmitt/action-tmate@v3
       - name: Run integration test
         run:  'cargo test --tests --features external_integration integration_tests:: -- --nocapture'
 
