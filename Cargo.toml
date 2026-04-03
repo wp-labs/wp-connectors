@@ -20,8 +20,7 @@ wp-log =  "0.2"
 wp-error =  "0.8"
 wp-specs =  "0.8"
 wp-conf-base = "0.2"
-# wp-data-fmt = "0.2"
-wp-data-fmt = {path = "../wp-data-fmt"}
+wp-data-fmt = "0.2.4"
 
 orion_exp = {  git = "https://github.com/galaxio-labs/orion-exp.git", tag = "v0.1.1" }
 # Orion Dependencies
