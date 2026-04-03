@@ -1,4 +1,4 @@
-#![cfg(feature = "mysql")]
+#![cfg(all(feature = "mysql", feature = "external_performance"))]
 
 use anyhow::Result;
 use std::time::Duration;
@@ -16,7 +16,6 @@ use crate::mysql_common::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "性能测试默认不在 CI 中运行，请手动执行"]
 async fn test_mysql_sink_performance() -> Result<()> {
     let docker_tool = DockerComposeTool::new("tests/mysql/component/docker-compose.yml")?;
 

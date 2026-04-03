@@ -8,7 +8,7 @@ pub const TEST_CLICKHOUSE_DB: &str = "test_db";
 pub const TEST_CLICKHOUSE_TABLE: &str = "wp_nginx";
 pub const TEST_CLICKHOUSE_USER: &str = "default";
 pub const TEST_CLICKHOUSE_PASSWORD: &str = "default";
-const CLICKHOUSE_READY_ATTEMPTS: usize = 20;
+const CLICKHOUSE_READY_ATTEMPTS: usize = 10;
 const CLICKHOUSE_READY_INTERVAL_SECS: u64 = 2;
 const CLICKHOUSE_READY_STABLE_PROBES: usize = 3;
 
@@ -47,46 +47,34 @@ async fn execute_sql(sql: &str) -> Result<String> {
 }
 
 async fn probe_clickhouse_service_ready() -> Result<()> {
-    let resp = clickhouse_client()
-        .get(format!("{}/ping", TEST_CLICKHOUSE_ENDPOINT))
-        .basic_auth(TEST_CLICKHOUSE_USER, Some(TEST_CLICKHOUSE_PASSWORD))
-        .send()
-        .await
-        .context("请求 ClickHouse /ping 失败")?;
+    let ping_result = async {
+        let resp = clickhouse_client()
+            .get(format!("{}/ping", TEST_CLICKHOUSE_ENDPOINT))
+            .basic_auth(TEST_CLICKHOUSE_USER, Some(TEST_CLICKHOUSE_PASSWORD))
+            .send()
+            .await
+            .context("请求 ClickHouse /ping 失败")?;
 
-    let status = resp.status();
-    let body = resp.text().await.unwrap_or_default();
-    if !status.is_success() || body.trim() != "Ok." {
-        anyhow::bail!("status={}, body={}", status, body);
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if !status.is_success() || body.trim() != "Ok." {
+            anyhow::bail!("status={}, body={}", status, body);
+        }
+
+        Ok::<(), anyhow::Error>(())
     }
+    .await;
 
-    execute_sql("SELECT 1").await?;
-    Ok(())
-}
+    let sql_result = execute_sql("SELECT 1").await;
 
-async fn probe_clickhouse_table_ddl() -> Result<()> {
-    let probe_table = "__wp_ready_probe";
-
-    execute_sql(&format!(
-        "CREATE DATABASE IF NOT EXISTS {}",
-        TEST_CLICKHOUSE_DB
-    ))
-    .await?;
-    execute_sql(&format!(
-        "DROP TABLE IF EXISTS {}.{}",
-        TEST_CLICKHOUSE_DB, probe_table
-    ))
-    .await?;
-    execute_sql(&format!(
-        "CREATE TABLE {}.{} (id Int64) ENGINE = MergeTree ORDER BY id",
-        TEST_CLICKHOUSE_DB, probe_table
-    ))
-    .await?;
-    execute_sql(&format!(
-        "DROP TABLE IF EXISTS {}.{}",
-        TEST_CLICKHOUSE_DB, probe_table
-    ))
-    .await?;
+    match (ping_result, sql_result) {
+        (Ok(()), Ok(_)) => Ok(()),
+        (_, Ok(_)) => Ok(()),
+        (Ok(()), Err(err)) => Err(err),
+        (Err(ping_err), Err(sql_err)) => {
+            anyhow::bail!("ping 与 SQL 探测都失败: ping={}, sql={}", ping_err, sql_err)
+        }
+    }?;
 
     Ok(())
 }
@@ -172,45 +160,4 @@ pub async fn query_table_count() -> Result<i64> {
     body.trim()
         .parse::<i64>()
         .with_context(|| format!("解析 ClickHouse count 失败: {}", body.trim()))
-}
-
-pub async fn wait_for_clickhouse_sink_ready() -> Result<()> {
-    wait_for_clickhouse_ready().await?;
-
-    let mut last_error = None;
-    let mut stable_successes = 0usize;
-
-    for attempt in 1..=CLICKHOUSE_READY_ATTEMPTS {
-        match probe_clickhouse_table_ddl().await {
-            Ok(()) => {
-                stable_successes += 1;
-                if stable_successes >= CLICKHOUSE_READY_STABLE_PROBES {
-                    println!(
-                        "✓ ClickHouse sink 已稳定就绪，连续 {} 次探测成功（第 {} 次完成）",
-                        CLICKHOUSE_READY_STABLE_PROBES, attempt
-                    );
-                    return Ok(());
-                }
-
-                println!(
-                    "ClickHouse sink 探测成功，继续观察稳定性（{}/{})...",
-                    stable_successes, CLICKHOUSE_READY_STABLE_PROBES
-                );
-            }
-            Err(err) => {
-                stable_successes = 0;
-                last_error = Some(err.to_string());
-            }
-        }
-
-        tokio::time::sleep(tokio::time::Duration::from_secs(
-            CLICKHOUSE_READY_INTERVAL_SECS,
-        ))
-        .await;
-    }
-
-    anyhow::bail!(
-        "等待 ClickHouse sink 就绪超时: {}",
-        last_error.unwrap_or_else(|| "未知错误".to_string())
-    )
 }

@@ -79,6 +79,8 @@ mysql = []
 postgres = []
 count = []
 victorialogs = []
+external_integration = []
+external_performance = []
 prometheus = [
     "dep:actix-web",
     "dep:prometheus",

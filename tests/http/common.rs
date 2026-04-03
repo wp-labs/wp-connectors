@@ -1,14 +1,19 @@
 use anyhow::Result;
-use serde_json::{Value, json};
+use serde_json::json;
 use wp_connector_api::ParamMap;
 
+#[cfg(feature = "external_integration")]
 pub const TEST_HTTP_SERVER: &str = "http://127.0.0.1:18080";
+
+#[cfg(feature = "external_performance")]
 pub const TEST_HTTP_NGINX_SERVER: &str = "http://127.0.0.1:8080";
+
 pub const ALL_HTTP_FORMATS: [&str; 6] = ["json", "ndjson", "csv", "kv", "raw", "proto-text"];
 const HTTP_READY_ATTEMPTS: usize = 15;
 const HTTP_READY_INTERVAL_SECS: u64 = 1;
-const HTTP_READY_STABLE_PROBES: usize = 3;
+const HTTP_READY_STABLE_PROBES: usize = 1;
 
+#[cfg(feature = "external_integration")]
 pub fn create_http_test_config(
     path: &str,
     fmt: &str,
@@ -39,6 +44,7 @@ pub fn create_http_test_config(
     params
 }
 
+#[cfg(feature = "external_performance")]
 pub fn create_http_test_config_with_base(
     base_url: &str,
     path: &str,
@@ -67,6 +73,7 @@ pub fn create_http_test_config_with_base(
     params
 }
 
+#[cfg(feature = "external_integration")]
 pub fn create_http_integration_scenarios() -> Vec<(String, ParamMap)> {
     let mut scenarios = Vec::new();
 
@@ -95,6 +102,7 @@ pub fn create_http_integration_scenarios() -> Vec<(String, ParamMap)> {
     scenarios
 }
 
+#[cfg(feature = "external_performance")]
 pub fn create_http_performance_scenarios() -> Vec<(String, ParamMap)> {
     let mut scenarios = Vec::new();
 
@@ -186,17 +194,19 @@ async fn wait_for_http_endpoint_ready(
     )
 }
 
+#[cfg(feature = "external_integration")]
 pub async fn wait_for_http_ready() -> Result<()> {
     wait_for_http_endpoint_ready(TEST_HTTP_SERVER, "/health", "HTTP 测试服务").await
 }
 
+#[cfg(feature = "external_integration")]
 pub async fn query_http_count(params: ParamMap) -> Result<i64> {
     let fmt = params
         .get("fmt")
-        .and_then(Value::as_str)
+        .and_then(serde_json::Value::as_str)
         .ok_or_else(|| anyhow::anyhow!("http test params missing fmt"))?;
 
-    let value: Value = reqwest::get(format!("{}/count", TEST_HTTP_SERVER))
+    let value: serde_json::Value = reqwest::get(format!("{}/count", TEST_HTTP_SERVER))
         .await?
         .json()
         .await?;
@@ -204,14 +214,16 @@ pub async fn query_http_count(params: ParamMap) -> Result<i64> {
     value
         .get("counts")
         .and_then(|counts| counts.get(fmt))
-        .and_then(Value::as_i64)
+        .and_then(serde_json::Value::as_i64)
         .ok_or_else(|| anyhow::anyhow!("http count response missing counts.{}", fmt))
 }
 
+#[cfg(feature = "external_performance")]
 pub async fn wait_for_http_nginx_ready() -> Result<()> {
     wait_for_http_endpoint_ready(TEST_HTTP_NGINX_SERVER, "/nginx_status", "HTTP nginx 服务").await
 }
 
+#[cfg(feature = "external_performance")]
 #[allow(dead_code)]
 pub async fn query_http_total_count(_params: ParamMap) -> Result<i64> {
     let body = reqwest::get(format!("{}/nginx_status", TEST_HTTP_NGINX_SERVER))

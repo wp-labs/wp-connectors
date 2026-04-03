@@ -1,4 +1,7 @@
-#![cfg(feature = "mysql")]
+#![cfg(all(
+    feature = "mysql",
+    any(feature = "external_integration", feature = "external_performance")
+))]
 
 use anyhow::{Context, Result};
 use sea_orm::sqlx::{

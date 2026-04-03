@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use wp_data_fmt::{Csv, FormatType, Json, KeyValue, ProtoTxt, Raw, RecordFormatter};
+use wp_data_fmt::{
+    Csv, FormatType, Json, KeyValue, ProtoTxt, Raw, RecordFormatter, ValueFormatter,
+};
 use wp_model_core::model::{DataField, DataRecord, DataType};
 
 pub enum BatchFormat {
@@ -121,6 +123,34 @@ pub fn fmt_str_kv(records: Vec<Arc<DataRecord>>, format: KeyValue) -> String {
     buffer
 }
 
+pub fn fmt_str_kv_http(records: Vec<Arc<DataRecord>>) -> String {
+    let json = Json;
+    let mut buffer = String::new();
+
+    for (record_idx, record) in records.iter().enumerate() {
+        if record_idx > 0 {
+            buffer.push('\n');
+        }
+
+        let mut first = true;
+        for field in record
+            .items
+            .iter()
+            .filter(|f| *f.get_meta() != DataType::Ignore)
+        {
+            if !first {
+                buffer.push(' ');
+            }
+            first = false;
+            buffer.push_str(field.get_name());
+            buffer.push('=');
+            buffer.push_str(&json.format_value(field.get_value()));
+        }
+    }
+
+    buffer
+}
+
 pub fn fmt_str_raw(records: Vec<Arc<DataRecord>>) -> String {
     let formatter = BatchFormat::Raw.into_format_type();
     let mut buffer = String::new();
@@ -197,6 +227,10 @@ pub fn fmt_bytes_kv(records: Vec<Arc<DataRecord>>, format: KeyValue) -> Vec<u8> 
     buffer
 }
 
+pub fn fmt_bytes_kv_http(records: Vec<Arc<DataRecord>>) -> Vec<u8> {
+    fmt_str_kv_http(records).into_bytes()
+}
+
 pub fn fmt_bytes_raw(records: Vec<Arc<DataRecord>>) -> Vec<u8> {
     let formatter = BatchFormat::Raw.into_format_type();
     let mut buffer = Vec::new();
@@ -228,7 +262,7 @@ pub fn fmt_bytes_proto_text(records: Vec<Arc<DataRecord>>) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wp_model_core::model::{types::value::ObjectValue, DataField, DataRecord};
+    use wp_model_core::model::{DataField, DataRecord, types::value::ObjectValue};
 
     fn sample_record(id: i64, name: &str) -> Arc<DataRecord> {
         let mut record = DataRecord::default();
@@ -305,7 +339,7 @@ mod tests {
     #[test]
     fn fmt_csv() {
         let rec = create_batch(3);
-        let res = fmt_strs(rec, BatchFormat::Csv(Csv::default()));
+        let res = fmt_strs(rec, BatchFormat::Kv(KeyValue::default()));
         println!("{}", res);
     }
 

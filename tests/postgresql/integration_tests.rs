@@ -1,4 +1,4 @@
-#![cfg(feature = "postgres")]
+#![cfg(all(feature = "postgres", feature = "external_integration"))]
 
 use anyhow::Result;
 use wp_connectors::postgres::PostgresSinkFactory;
@@ -23,5 +23,5 @@ async fn test_postgresql_sink_full_integration() -> Result<()> {
         .with_async_wait_ready(|_params| async { wait_for_postgresql_ready().await });
 
     let runtime = SinkIntegrationRuntime::new(docker_tool, vec![sink_info]);
-    runtime.run().await
+    runtime.run(true).await
 }

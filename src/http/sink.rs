@@ -2,7 +2,7 @@
 ///
 /// This module provides the main HTTP Sink implementation for sending data to HTTP endpoints.
 use super::config::HttpSinkConfig;
-use crate::utils::fmt::{BatchFormat, fmt_bytes};
+use crate::utils::fmt::{BatchFormat, fmt_bytes, fmt_bytes_kv_http};
 use crate::utils::time_stat_utils::TimeStatUtils;
 use async_trait::async_trait;
 use flate2::Compression;
@@ -15,7 +15,7 @@ use std::time::Duration;
 use wp_connector_api::{
     AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkError, SinkReason, SinkResult,
 };
-use wp_data_fmt::{Csv, KeyValue};
+use wp_data_fmt::Csv;
 use wp_model_core::model::DataRecord;
 
 // Global atomic counter for generating unique instance IDs
@@ -105,7 +105,7 @@ impl HttpSink {
         match self.config.fmt.as_str() {
             "json" | "ndjson" => Ok(fmt_bytes(records, BatchFormat::Ndjson)),
             "csv" => Ok(fmt_bytes(records, BatchFormat::Csv(Csv::default()))),
-            "kv" => Ok(fmt_bytes(records, BatchFormat::Kv(KeyValue::default()))),
+            "kv" => Ok(fmt_bytes_kv_http(records)),
             "raw" => Ok(fmt_bytes(records, BatchFormat::Raw)),
             "proto-text" => Ok(fmt_bytes(records, BatchFormat::ProtoText)),
             _ => Err(sink_error(format!(
@@ -122,7 +122,7 @@ impl HttpSink {
             "json" => Ok(fmt_bytes(records, BatchFormat::Json)),
             "ndjson" => Ok(fmt_bytes(records, BatchFormat::Ndjson)),
             "csv" => Ok(fmt_bytes(records, BatchFormat::Csv(Csv::default()))),
-            "kv" => Ok(fmt_bytes(records, BatchFormat::Kv(KeyValue::default()))),
+            "kv" => Ok(fmt_bytes_kv_http(records)),
             "raw" => Ok(fmt_bytes(records, BatchFormat::Raw)),
             "proto-text" => Ok(fmt_bytes(records, BatchFormat::ProtoText)),
             _ => Err(sink_error(format!(
@@ -468,7 +468,7 @@ impl AsyncRecordSink for HttpSink {
 
         // Format the batch of DataRecords according to configured format
         let formatted = self.format_records_bytes(&data)?;
-
+        println!("{}", String::from_utf8(formatted.clone()).unwrap());
         // Compress data if compression is enabled
         let body = self.compress_data(&formatted)?;
 
@@ -886,8 +886,8 @@ mod tests {
         assert!(result.is_ok());
 
         let kv_str = result.unwrap();
-        assert!(kv_str.contains("id: 123"));
-        assert!(kv_str.contains("name: \"test\""));
+        assert!(kv_str.contains("id=123"));
+        assert!(kv_str.contains("name=\"test\""));
     }
 
     #[tokio::test]

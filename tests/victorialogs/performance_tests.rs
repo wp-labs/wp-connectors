@@ -1,4 +1,4 @@
-#![cfg(feature = "victorialogs")]
+#![cfg(all(feature = "victorialogs", feature = "external_performance"))]
 
 use anyhow::Result;
 use wp_connectors::victorialogs::VictoriaLogSinkFactory;
@@ -15,7 +15,6 @@ use crate::victorialogs_common::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "性能测试默认不在 CI 中运行，请手动执行"]
 async fn test_victorialogs_sink_performance() -> Result<()> {
     let docker_tool = DockerComposeTool::new("tests/victorialogs/component/docker-compose.yml")?;
 

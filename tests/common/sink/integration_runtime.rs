@@ -29,7 +29,7 @@ impl<T: ComponentTool + Sync, F: SinkFactory> SinkIntegrationRuntime<T, F> {
     }
 
     /// 运行集成测试
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&self, clear_component: bool) -> Result<()> {
         println!("启动组件...");
         self.component_tool.setup_and_up().await?;
 
@@ -40,8 +40,8 @@ impl<T: ComponentTool + Sync, F: SinkFactory> SinkIntegrationRuntime<T, F> {
             println!("\n========== 测试 Sink: {} =========", display_name);
 
             // 2.1 执行异步初始化
-            println!("执行初始化...");
             sink_info.wait_ready().await?;
+            println!("执行初始化...");
             sink_info.init().await?;
 
             // 2.2 构建 SinkSpec
@@ -127,8 +127,10 @@ impl<T: ComponentTool + Sync, F: SinkFactory> SinkIntegrationRuntime<T, F> {
         }
 
         // 3. 清理
-        println!("\n清理环境...");
-        self.component_tool.down().await?;
+        if clear_component {
+            println!("\n清理环境...");
+            self.component_tool.down().await?;
+        }
 
         Ok(())
     }

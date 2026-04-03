@@ -1,4 +1,4 @@
-#![cfg(feature = "kafka")]
+#![cfg(all(feature = "kafka", feature = "external_integration"))]
 
 use anyhow::Result;
 use wp_connectors::kafka::KafkaSinkFactory;
@@ -32,5 +32,5 @@ async fn test_kafka_sink_full_integration() -> Result<()> {
         .collect();
 
     let runtime = SinkIntegrationRuntime::new(docker_tool, sink_infos);
-    runtime.run().await
+    runtime.run(true).await
 }

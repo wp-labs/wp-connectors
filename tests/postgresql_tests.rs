@@ -1,13 +1,20 @@
-#![cfg(feature = "postgres")]
+#![cfg(all(
+    feature = "postgres",
+    any(feature = "external_integration", feature = "external_performance")
+))]
 
+#[cfg(any(feature = "external_integration", feature = "external_performance"))]
 #[path = "common/mod.rs"]
 mod common;
 
+#[cfg(any(feature = "external_integration", feature = "external_performance"))]
 #[path = "postgresql/common.rs"]
 mod postgresql_common;
 
+#[cfg(feature = "external_integration")]
 #[path = "postgresql/integration_tests.rs"]
 mod integration_tests;
 
+#[cfg(feature = "external_performance")]
 #[path = "postgresql/performance_tests.rs"]
 mod performance_tests;

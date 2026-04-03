@@ -1,4 +1,4 @@
-#![cfg(feature = "doris")]
+#![cfg(all(feature = "doris", feature = "external_integration"))]
 //! Integration tests for Doris sink using the new integration test framework.
 
 use anyhow::Result;
@@ -28,7 +28,7 @@ async fn test_doris_sink_full_integration() -> Result<()> {
 
     // 3. 创建运行时并执行测试
     let runtime = SinkIntegrationRuntime::new(docker_tool, vec![sink_info]);
-    runtime.run().await?;
+    runtime.run(true).await?;
 
     println!("\n✅ Doris 集成测试完成！");
     Ok(())

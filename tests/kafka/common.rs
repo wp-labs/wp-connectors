@@ -1,4 +1,7 @@
-#![cfg(feature = "kafka")]
+#![cfg(all(
+    feature = "kafka",
+    any(feature = "external_integration", feature = "external_performance")
+))]
 
 use anyhow::{Context, Result};
 use rdkafka_wrap::{KWConsumer, KWConsumerConf, KWProducer, KWProducerConf, OptionExt};
@@ -10,7 +13,10 @@ use tokio::time::{Duration, timeout};
 use wp_connector_api::ParamMap;
 
 pub const TEST_KAFKA_BROKERS: &str = "127.0.0.1:9092";
+#[cfg(feature = "external_integration")]
 pub const ALL_KAFKA_FORMATS: [&str; 6] = ["json", "csv", "show", "kv", "raw", "proto-text"];
+
+#[cfg(feature = "external_integration")]
 const TEST_KAFKA_TOPIC_PREFIX: &str = "wp_kafka_sink";
 const KAFKA_READY_ATTEMPTS: usize = 20;
 const KAFKA_READY_INTERVAL_SECS: u64 = 2;
@@ -56,10 +62,12 @@ async fn probe_kafka_service_ready() -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "external_performance")]
 pub fn create_kafka_performance_config() -> ParamMap {
     create_kafka_config(unique_topic("wp_kafka_perf"), "json")
 }
 
+#[cfg(feature = "external_integration")]
 pub fn create_kafka_test_scenarios() -> Vec<(String, ParamMap)> {
     ALL_KAFKA_FORMATS
         .into_iter()

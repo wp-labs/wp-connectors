@@ -1,3 +1,5 @@
+#![cfg(all(feature = "doris", feature = "external_performance"))]
+
 use anyhow::Result;
 use wp_connectors::doris::DorisSinkFactory;
 
@@ -13,8 +15,7 @@ use crate::doris_common::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "性能测试默认不在 CI 中运行，请手动执行"]
-//执行命令:cargo test --release --package wp-connectors --test doris_tests performance_tests::test_doris_sink_performance --features doris -- --exact --nocapture --ignored
+// 执行命令: cargo test --release --package wp-connectors --test doris_tests --features doris,external_performance performance_tests::test_doris_sink_performance -- --exact --nocapture
 async fn test_doris_sink_performance() -> Result<()> {
     let docker_tool = DockerComposeTool::new("tests/doris/component/performance_tests.yml")?;
     // 添加sink信息、包括sink工厂、测试的初始化方法，基础方法

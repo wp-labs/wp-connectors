@@ -1,3 +1,5 @@
+#![cfg(all(feature = "http", feature = "external_integration"))]
+
 use anyhow::Result;
 use wp_connectors::http::HttpSinkFactory;
 
@@ -30,5 +32,5 @@ async fn test_http_sink_full_integration() -> Result<()> {
         .collect();
 
     let runtime = SinkIntegrationRuntime::new(tool, sink_infos);
-    runtime.run().await
+    runtime.run(true).await
 }

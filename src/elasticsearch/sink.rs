@@ -107,9 +107,8 @@ impl ElasticsearchSink {
                     "_index": &self.index
                 }
             });
-            let action_bytes = serde_json::to_vec(&action).map_err(|e| {
-                    sink_error(format!("json serialization failed for action: {}", e))
-                })?;
+            let action_bytes = serde_json::to_vec(&action)
+                .map_err(|e| sink_error(format!("json serialization failed for action: {}", e)))?;
             ndjson.extend_from_slice(&action_bytes);
             ndjson.push(b'\n');
 

@@ -221,45 +221,51 @@ let tool = ShellScriptTool::new_with_options(
 ## 常用命令
 
 ```bash
+# 全部集成测试
+cargo test --tests --features external_integration integration_tests:: -- --nocapture
+
+# 全部性能测试
+cargo test --release --tests --features external_performance performance_tests:: -- --nocapture
+
 # Doris 集成测试
-cargo test --package wp-connectors --test doris_tests integration_tests::test_doris_sink_full_integration --features doris -- --exact --nocapture
+cargo test --package wp-connectors --test doris_tests integration_tests::test_doris_sink_full_integration --features doris,external_integration -- --exact --nocapture
 
 # Doris 性能测试
-cargo test --package wp-connectors --test doris_tests performance_tests::test_doris_sink_performance --features doris -- --exact --nocapture --ignored
+cargo test --package wp-connectors --test doris_tests performance_tests::test_doris_sink_performance --features doris,external_performance -- --exact --nocapture
 
 # HTTP 集成测试
-cargo test --package wp-connectors --test http_tests --features http integration_tests::test_http_sink_full_integration -- --exact --nocapture
+cargo test --package wp-connectors --test http_tests --features http,external_integration integration_tests::test_http_sink_full_integration -- --exact --nocapture
 
 # HTTP 性能测试
-cargo test --package wp-connectors --test http_tests --features http performance_tests::test_http_sink_performance -- --exact --nocapture --ignored
+cargo test --package wp-connectors --test http_tests --features http,external_performance performance_tests::test_http_sink_performance -- --exact --nocapture
 
 # ClickHouse 集成测试
-cargo test --package wp-connectors --test clickhouse_tests --features clickhouse integration_tests::test_clickhouse_sink_full_integration -- --exact --nocapture
+cargo test --package wp-connectors --test clickhouse_tests --features clickhouse,external_integration integration_tests::test_clickhouse_sink_full_integration -- --exact --nocapture
 
 # ClickHouse 性能测试
-cargo test --package wp-connectors --test clickhouse_tests --features clickhouse performance_tests::test_clickhouse_sink_performance -- --exact --nocapture --ignored
+cargo test --package wp-connectors --test clickhouse_tests --features clickhouse,external_performance performance_tests::test_clickhouse_sink_performance -- --exact --nocapture
 
 # MySQL 集成测试
-cargo test --package wp-connectors --test mysql_tests --features mysql integration_tests::test_mysql_sink_full_integration -- --exact --nocapture
+cargo test --package wp-connectors --test mysql_tests --features mysql,external_integration integration_tests::test_mysql_sink_full_integration -- --exact --nocapture
 
 # MySQL 性能测试
-cargo test --package wp-connectors --test mysql_tests --features mysql performance_tests::test_mysql_sink_performance -- --exact --nocapture --ignored
+cargo test --package wp-connectors --test mysql_tests --features mysql,external_performance performance_tests::test_mysql_sink_performance -- --exact --nocapture
 
 # Elasticsearch 集成测试
-cargo test --package wp-connectors --test elasticsearch_tests --features elasticsearch integration_tests::test_elasticsearch_sink_full_integration -- --exact --nocapture
+cargo test --package wp-connectors --test elasticsearch_tests --features elasticsearch,external_integration integration_tests::test_elasticsearch_sink_full_integration -- --exact --nocapture
 
 # Elasticsearch 性能测试
-cargo test --package wp-connectors --test elasticsearch_tests --features elasticsearch performance_tests::test_elasticsearch_sink_performance -- --exact --nocapture --ignored
+cargo test --package wp-connectors --test elasticsearch_tests --features elasticsearch,external_performance performance_tests::test_elasticsearch_sink_performance -- --exact --nocapture
 
 # PostgreSQL 集成测试
-cargo test --package wp-connectors --test postgresql_tests --features postgres integration_tests::test_postgresql_sink_full_integration -- --exact --nocapture
+cargo test --package wp-connectors --test postgresql_tests --features postgres,external_integration integration_tests::test_postgresql_sink_full_integration -- --exact --nocapture
 
 # PostgreSQL 性能测试
-cargo test --package wp-connectors --test postgresql_tests --features postgres performance_tests::test_postgresql_sink_performance -- --exact --nocapture --ignored
+cargo test --package wp-connectors --test postgresql_tests --features postgres,external_performance performance_tests::test_postgresql_sink_performance -- --exact --nocapture
 
 # VictoriaLogs 集成测试
-cargo test --package wp-connectors --test victorialogs_tests --features victorialogs integration_tests::test_victorialogs_sink_full_integration -- --exact --nocapture
+cargo test --package wp-connectors --test victorialogs_tests --features victorialogs,external_integration integration_tests::test_victorialogs_sink_full_integration -- --exact --nocapture
 
 # VictoriaLogs 性能测试
-cargo test --package wp-connectors --test victorialogs_tests --features victorialogs performance_tests::test_victorialogs_sink_performance -- --exact --nocapture --ignored
+cargo test --package wp-connectors --test victorialogs_tests --features victorialogs,external_performance performance_tests::test_victorialogs_sink_performance -- --exact --nocapture
 ```

@@ -21,7 +21,7 @@ use wp_model_core::model::DataRecord;
 // ========================================
 
 /// 测试服务器地址
-const SERVER_HOST: &str = "http://localhost:8080";
+const SERVER_HOST: &str = "http://localhost:18080";
 
 /// HTTP 方法
 const HTTP_METHOD: &str = "POST";
