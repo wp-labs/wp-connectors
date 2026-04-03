@@ -269,3 +269,4 @@ cargo test --package wp-connectors --test victorialogs_tests --features victoria
 # VictoriaLogs 性能测试
 cargo test --package wp-connectors --test victorialogs_tests --features victorialogs,external_performance performance_tests::test_victorialogs_sink_performance -- --exact --nocapture
 ```
+
