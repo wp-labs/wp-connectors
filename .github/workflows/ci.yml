@@ -43,8 +43,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Debug
-        uses: mxschmitt/action-tmate@v3
+      # - name: Debug
+      #   uses: mxschmitt/action-tmate@v3
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets --all-features -- -D warnings
 
