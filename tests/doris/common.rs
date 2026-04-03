@@ -15,7 +15,7 @@ pub const TEST_DORIS_DB: &str = "test_db";
 pub const TEST_DORIS_TABLE: &str = "wp_nginx";
 pub const TEST_DORIS_USER: &str = "root";
 pub const TEST_DORIS_PASSWORD: Option<&str> = None;
-const DORIS_READY_ATTEMPTS: usize = 20;
+const DORIS_READY_ATTEMPTS: usize = 30;
 const DORIS_READY_INTERVAL_SECS: u64 = 2;
 const DORIS_READY_STABLE_PROBES: usize = 3;
 
