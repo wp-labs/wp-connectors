@@ -18,6 +18,7 @@ use crate::kafka_common::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "性能测试默认忽略，请按需手动执行"]
 async fn test_kafka_sink_performance() -> Result<()> {
     let docker_tool = DockerComposeTool::new("tests/kafka/component/docker-compose.yml")?;
 

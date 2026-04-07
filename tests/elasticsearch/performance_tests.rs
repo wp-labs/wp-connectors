@@ -16,6 +16,7 @@ use crate::elasticsearch_common::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "性能测试默认忽略，请按需手动执行"]
 // cargo test --release --package wp-connectors --test elasticsearch_tests --features elasticsearch,external_performance performance_tests::test_elasticsearch_sink_performance -- --exact --nocapture
 async fn test_elasticsearch_sink_performance() -> Result<()> {
     let docker_tool = DockerComposeTool::new("tests/elasticsearch/component/docker-compose.yml")?;

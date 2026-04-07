@@ -15,6 +15,7 @@ use crate::doris_common::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "性能测试默认忽略，请按需手动执行"]
 // 执行命令: cargo test --release --package wp-connectors --test doris_tests --features doris,external_performance performance_tests::test_doris_sink_performance -- --exact --nocapture
 async fn test_doris_sink_performance() -> Result<()> {
     let docker_tool = DockerComposeTool::new("tests/doris/component/performance_tests.yml")?;

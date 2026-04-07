@@ -14,6 +14,7 @@ use crate::common::{
 use crate::http_common::{create_http_performance_scenarios, wait_for_http_nginx_ready};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "性能测试默认忽略，请按需手动执行"]
 // cargo test --release --package wp-connectors --test http_tests --features http,external_performance performance_tests::test_http_sink_performance -- --exact --nocapture
 async fn test_http_sink_performance() -> Result<()> {
     let tool = DockerComposeTool::new("tests/http/component/docker-compose.yml")?;
