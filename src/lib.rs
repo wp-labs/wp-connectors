@@ -2,6 +2,7 @@
 pub const WP_SRC_VAL: &str = "wp_src_val";
 
 // 通用工具模块
+mod http_utils;
 pub mod utils;
 
 // Kafka：默认启用（feature = "kafka" 是默认特性）
