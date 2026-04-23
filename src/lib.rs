@@ -16,6 +16,10 @@ pub mod mysql;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 
+// 达梦数据库：可选功能，启用方式 `--features dmdb`
+#[cfg(feature = "dmdb")]
+pub mod dmdb;
+
 // Prometheus：可选功能，启用方式 `--features prometheus`
 #[cfg(feature = "prometheus")]
 pub mod prometheus;
