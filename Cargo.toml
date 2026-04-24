@@ -24,7 +24,7 @@ wp-data-fmt = "0.2.4"
 
 orion_exp = "0.1"
 # Orion Dependencies
-orion-error = "0.6"
+orion-error = "0.7"
 orion_conf = { version = "0.5", features = ["yaml", "toml"] }
 
 # Core Runtime Dependencies
