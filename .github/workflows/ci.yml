@@ -22,6 +22,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
+      - name: Install unixODBC on macOS
+        if: runner.os == 'macOS'
+        run: brew install unixodbc
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --lib --bins --all-features -- --test-threads=1
 
