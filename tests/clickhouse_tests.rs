@@ -12,9 +12,9 @@ mod common;
 mod clickhouse_common;
 
 #[cfg(feature = "external_integration")]
-#[path = "clickhouse/integration_tests.rs"]
+#[path = "clickhouse/sinks/integration_tests.rs"]
 mod integration_tests;
 
 #[cfg(feature = "external_performance")]
-#[path = "clickhouse/performance_tests.rs"]
+#[path = "clickhouse/sinks/performance_tests.rs"]
 mod performance_tests;

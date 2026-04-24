@@ -203,6 +203,12 @@ impl ComponentTool for DockerComposeTool {
     async fn restart(&self) -> Result<()> {
         DockerComposeTool::restart(self).await
     }
+    /// 完整启动流程：拉取依赖 + 启动 + 等待启动完成
+    async fn setup_and_up(&self) -> Result<()> {
+        self.up().await?;
+        self.wait_started().await?;
+        Ok(())
+    }
 }
 
 /// Shell 脚本操作工具

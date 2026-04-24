@@ -56,7 +56,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run integration test
-        run:  'cargo test --tests --features external_integration integration_tests:: -- --nocapture --ignored'
+        run:  'cargo test --tests --features external_integration integration_tests:: -- --nocapture --ignored --test-threads=1'
 
   security:
     name: Security Audit

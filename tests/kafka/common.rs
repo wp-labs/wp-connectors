@@ -33,6 +33,15 @@ fn unique_topic(prefix: &str) -> String {
     format!("{}_{}", prefix, next_suffix())
 }
 
+#[cfg(feature = "external_integration")]
+pub fn unique_kafka_topic(prefix: &str) -> String {
+    unique_topic(prefix)
+}
+
+pub fn unique_kafka_group(prefix: &str) -> String {
+    format!("{}_{}", prefix, next_suffix())
+}
+
 fn topic_from_params(params: &ParamMap) -> Result<String> {
     params
         .get("topic")
@@ -92,6 +101,39 @@ fn create_kafka_config(topic: String, fmt: &str) -> ParamMap {
     params.insert("fmt".into(), json!(fmt));
     params.insert("config".into(), json!(["acks=all", "linger.ms=5"]));
     params
+}
+
+#[cfg(feature = "external_integration")]
+pub fn create_kafka_source_config(topic: String) -> ParamMap {
+    let mut params = BTreeMap::new();
+    params.insert("brokers".into(), json!(TEST_KAFKA_BROKERS));
+    params.insert("topic".into(), json!(topic));
+    params.insert(
+        "group_id".into(),
+        json!(unique_kafka_group("wp_kafka_source_group")),
+    );
+    params.insert(
+        "config".into(),
+        json!([
+            "auto.offset.reset=earliest",
+            "enable.auto.commit=false",
+            "session.timeout.ms=6000"
+        ]),
+    );
+    params
+}
+
+#[cfg(feature = "external_integration")]
+pub async fn produce_topic_messages(params: ParamMap, payloads: Vec<Vec<u8>>) -> Result<()> {
+    let topic = topic_from_params(&params)?;
+    let producer = kafka_producer(&topic)?;
+    for payload in payloads {
+        producer
+            .publish(&payload, b"")
+            .await
+            .with_context(|| format!("发送 Kafka 测试消息失败: {topic}"))?;
+    }
+    Ok(())
 }
 
 pub async fn wait_for_kafka_ready() -> Result<()> {

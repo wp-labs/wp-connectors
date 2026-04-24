@@ -12,9 +12,9 @@ mod common;
 mod victorialogs_common;
 
 #[cfg(feature = "external_integration")]
-#[path = "victorialogs/integration_tests.rs"]
+#[path = "victorialogs/sinks/integration_tests.rs"]
 mod integration_tests;
 
 #[cfg(feature = "external_performance")]
-#[path = "victorialogs/performance_tests.rs"]
+#[path = "victorialogs/sinks/performance_tests.rs"]
 mod performance_tests;
