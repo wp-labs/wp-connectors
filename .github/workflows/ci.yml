@@ -22,6 +22,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
+      - name: Install ODBC runtime
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            brew install unixodbc
+          else
+            sudo apt-get update
+            sudo apt-get install -y unixodbc-dev
+          fi
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --lib --bins --all-features -- --test-threads=1
 
@@ -43,6 +51,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - name: Install ODBC runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc-dev
       # - name: Debug
       #   uses: mxschmitt/action-tmate@v3
       - uses: Swatinem/rust-cache@v2
@@ -54,6 +66,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install ODBC runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc-dev
       - uses: Swatinem/rust-cache@v2
       - name: Run integration test
         run:  'cargo test --tests --features external_integration integration_tests:: -- --nocapture --ignored --test-threads=1'
@@ -76,6 +92,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
+      - name: Install ODBC runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc-dev
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
 

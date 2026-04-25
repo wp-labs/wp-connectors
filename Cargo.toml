@@ -42,6 +42,7 @@ winnow = "1.0"
 educe = { version = "0.6", default-features = false, features = ["Debug", "Default"] }
 sea-orm = { version = "1.1", default-features = false, features = ["sqlx-mysql", "sqlx-postgres", "runtime-tokio-rustls"] }
 sqlx = { version = "0.8", default-features = false, features = ["mysql", "runtime-tokio", "tls-native-tls"]  }
+odbc-api = { version = "24.1", default-features = false, features = ["odbc_version_3_5"] }
 
 
 # Optional Feature Dependencies
@@ -72,10 +73,11 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 [features]
 # 默认只编译 Kafka 相关代码；需要 Prometheus 导出器时启用 `prometheus` 特性
 #default = ["kafka"]
-default = ["kafka", "mysql", "postgres", "prometheus","victoriametrics", "victorialogs","doris","count","clickhouse","elasticsearch","http"]
+default = ["kafka", "mysql", "postgres", "prometheus","victoriametrics", "victorialogs","doris","count","clickhouse","elasticsearch","http", "dmdb"]
 kafka = [ "dep:rdkafka-wrap"]
 mysql = []
 postgres = []
+dmdb = ["dep:odbc-api"]
 count = []
 victorialogs = []
 external_integration = []
@@ -100,7 +102,7 @@ doris = ["dep:reqwest"]
 elasticsearch = ["dep:reqwest"]
 clickhouse = ["dep:reqwest", "dep:clickhouse"]
 http = ["dep:reqwest", "dep:flate2", "dep:base64", "dep:actix-web"]
-full = ["kafka", "mysql", "postgres", "prometheus", "elasticsearch", "clickhouse", "victoriametrics", "victorialogs", "doris", "http"]
+full = ["kafka", "mysql", "postgres", "dmdb", "prometheus", "elasticsearch", "clickhouse", "victoriametrics", "victorialogs", "doris", "http"]
 
 [dependencies]
 # WP Dependencies - using workspace versions
@@ -131,6 +133,7 @@ bytes = { workspace = true }
 winnow = { workspace = true }
 educe = { workspace = true }
 sea-orm = { workspace = true }
+odbc-api = { workspace = true, optional = true }
 
 # Optional Dependencies - using workspace versions
 actix-web = { workspace = true, optional = true }
