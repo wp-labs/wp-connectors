@@ -9,7 +9,9 @@ mod adapter;
 mod config;
 mod factory;
 mod sink;
+mod source;
 
 // 统一导出：便于上游 `wp_connector_postgres::Sink/Factory` 使用
-pub use factory::PostgresSinkFactory;
+pub use factory::{PostgresSinkFactory, PostgresSourceFactory};
 pub use sink::PostgresSink;
+pub use source::PostgresSource;

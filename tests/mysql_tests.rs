@@ -12,9 +12,9 @@ mod common;
 mod mysql_common;
 
 #[cfg(feature = "external_integration")]
-#[path = "mysql/integration_tests.rs"]
+#[path = "mysql/sinks/integration_tests.rs"]
 mod integration_tests;
 
 #[cfg(feature = "external_performance")]
-#[path = "mysql/performance_tests.rs"]
+#[path = "mysql/sinks/performance_tests.rs"]
 mod performance_tests;

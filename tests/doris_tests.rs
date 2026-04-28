@@ -13,11 +13,11 @@ mod common;
 mod doris_common;
 
 #[cfg(feature = "external_integration")]
-#[path = "doris/integration_tests.rs"]
+#[path = "doris/sinks/integration_tests.rs"]
 mod integration_tests;
 
 #[cfg(feature = "external_performance")]
-#[path = "doris/performance_tests.rs"]
+#[path = "doris/sinks/performance_tests.rs"]
 mod performance_tests;
 
 // #[path = "doris/test_1.rs"]

@@ -4,11 +4,11 @@ use winnow::error::ModalResult;
 use winnow::prelude::*;
 use winnow::token::{literal, take_till, take_until};
 
-/// 与 `structure::io::Postgres` 等价的配置结构，集中到 postgres/ 目录便于后续抽离。
 #[derive(Educe, Deserialize, Serialize, PartialEq, Clone)]
 #[educe(Debug, Default)]
 pub struct PostgresConf {
     /// 形如 `host:port` 的地址
+    #[educe(Default = "localhost:5432")]
     pub endpoint: String,
     #[educe(Default = "root")]
     pub username: String,
@@ -16,9 +16,24 @@ pub struct PostgresConf {
     pub password: String,
     #[educe(Default = "wparse")]
     pub database: String,
+    #[educe(Default = "public")]
+    pub schema: String,
     pub table: Option<String>,
     /// 批量写入的条数（可选）
     pub batch: Option<usize>,
+    /// source 使用的增量游标列
+    pub cursor_column: Option<String>,
+    /// 游标类型，支持 `int` / `time`
+    #[educe(Default = "\"int\".to_string()")]
+    pub cursor_type: String,
+    /// 首次启动且无 checkpoint 时的起点
+    pub start_from: Option<String>,
+    /// start_from 的输入格式，仅 time 游标使用
+    pub start_from_format: Option<String>,
+    /// 空轮询间隔（毫秒）
+    pub poll_interval_ms: Option<u64>,
+    /// 查询失败后的退避间隔（毫秒）
+    pub error_backoff_ms: Option<u64>,
 }
 
 impl PostgresConf {
@@ -54,8 +69,15 @@ impl PostgresConf {
             username: username.to_string(),
             password: password.to_string(),
             database: database.to_string(),
+            schema: "public".to_string(),
             table: None,
             batch: None,
+            cursor_column: None,
+            cursor_type: "int".to_string(),
+            start_from: None,
+            start_from_format: None,
+            poll_interval_ms: None,
+            error_backoff_ms: None,
         })
     }
 

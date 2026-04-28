@@ -226,10 +226,14 @@
 mod config;
 mod factory;
 mod sink;
+mod source;
+mod source_factory;
 
 pub use config::HttpSinkConfig;
 pub use factory::HttpSinkFactory;
 pub use sink::HttpSink;
+pub use source::{HttpSource, HttpSourceConfig};
+pub use source_factory::HttpSourceFactory;
 
 /// Register the HTTP sink factory with the connector registry
 ///

@@ -71,19 +71,12 @@ impl HttpSink {
         self.instance_id
     }
 
-    /// Format a single DataRecord according to the configured format
-    ///
-    /// # Arguments
-    ///
-    /// * `record` - The data record to format
-    ///
-    /// # Returns
-    ///
-    /// Returns a Result containing the formatted string or an error
-    fn format_record(&self, record: &DataRecord) -> SinkResult<String> {
-        String::from_utf8(self.format_record_bytes(record)?)
-            .map_err(|e| sink_error(format!("formatted body is not valid UTF-8: {}", e)))
-    }
+    // 这里保留旧实现草稿，后续如果需要恢复单条记录字符串格式化，
+    // 可以复用 `format_record_bytes` 的逻辑再开启。
+    // fn format_record(&self, record: &DataRecord) -> SinkResult<String> {
+    //     String::from_utf8(self.format_record_bytes(record)?)
+    //         .map_err(|e| sink_error(format!("formatted body is not valid UTF-8: {}", e)))
+    // }
 
     /// Format multiple DataRecords according to the configured format
     ///
@@ -99,21 +92,21 @@ impl HttpSink {
             .map_err(|e| sink_error(format!("formatted body is not valid UTF-8: {}", e)))
     }
 
-    fn format_record_bytes(&self, record: &DataRecord) -> SinkResult<Vec<u8>> {
-        let records = vec![Arc::new(record.clone())];
+    // fn format_record_bytes(&self, record: &DataRecord) -> SinkResult<Vec<u8>> {
+    //     let records = vec![Arc::new(record.clone())];
 
-        match self.config.fmt.as_str() {
-            "json" | "ndjson" => Ok(fmt_bytes(records, BatchFormat::Ndjson)),
-            "csv" => Ok(fmt_bytes(records, BatchFormat::Csv(Csv::default()))),
-            "kv" => Ok(fmt_bytes_kv_http(records)),
-            "raw" => Ok(fmt_bytes(records, BatchFormat::Raw)),
-            "proto-text" => Ok(fmt_bytes(records, BatchFormat::ProtoText)),
-            _ => Err(sink_error(format!(
-                "unsupported format: {}",
-                self.config.fmt
-            ))),
-        }
-    }
+    //     match self.config.fmt.as_str() {
+    //         "json" | "ndjson" => Ok(fmt_bytes(records, BatchFormat::Ndjson)),
+    //         "csv" => Ok(fmt_bytes(records, BatchFormat::Csv(Csv::default()))),
+    //         "kv" => Ok(fmt_bytes_kv_http(records)),
+    //         "raw" => Ok(fmt_bytes(records, BatchFormat::Raw)),
+    //         "proto-text" => Ok(fmt_bytes(records, BatchFormat::ProtoText)),
+    //         _ => Err(sink_error(format!(
+    //             "unsupported format: {}",
+    //             self.config.fmt
+    //         ))),
+    //     }
+    // }
 
     fn format_records_bytes(&self, records: &[Arc<DataRecord>]) -> SinkResult<Vec<u8>> {
         let records = records.to_vec();
@@ -425,41 +418,7 @@ impl AsyncCtrl for HttpSink {
 #[async_trait]
 impl AsyncRecordSink for HttpSink {
     async fn sink_record(&mut self, data: &DataRecord) -> SinkResult<()> {
-        // Start timing for performance tracking
-        self.time_stats.start_stat(1);
-
-        // Format the single DataRecord according to configured format
-        let formatted = self.format_record_bytes(data)?;
-
-        // Compress data if compression is enabled
-        let body = self.compress_data(&formatted)?;
-
-        // Send HTTP request with retry logic
-        let result = self.send_with_retry(body).await;
-
-        // End timing
-        self.time_stats.end_stat();
-
-        // Log based on result
-        match &result {
-            Ok(_) => {
-                log::debug!(
-                    "http sink success: 1 record sent to {} (instance_id={})",
-                    self.config.endpoint,
-                    self.instance_id
-                );
-            }
-            Err(e) => {
-                log::error!(
-                    "http sink failed: endpoint={}, instance_id={}, error={}",
-                    self.config.endpoint,
-                    self.instance_id,
-                    e
-                );
-            }
-        }
-
-        result
+        self.sink_records(vec![Arc::new(data.clone())]).await
     }
 
     async fn sink_records(&mut self, data: Vec<Arc<DataRecord>>) -> SinkResult<()> {
@@ -704,39 +663,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn format_record_json() {
-        let config = HttpSinkConfig::new(
-            "http://example.com".to_string(),
-            None,
-            None,
-            None,
-            None,
-            Some("json".to_string()),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        let sink = HttpSink::new(config).await.unwrap();
-
-        let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 123));
-        record.append(DataField::from_chars("name", "test"));
-        record.append(DataField::from_digit("score", 95));
-
-        let result = sink.format_record(&record);
-        assert!(result.is_ok());
-
-        let json_str = result.unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-
-        assert_eq!(parsed["id"], 123);
-        assert_eq!(parsed["name"], "test");
-        assert_eq!(parsed["score"], 95);
-    }
-
-    #[tokio::test]
     async fn format_records_json_array() {
         // Test that format_records with "json" format produces a JSON array
         let config = HttpSinkConfig::new(
@@ -830,124 +756,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn format_record_csv() {
-        let config = HttpSinkConfig::new(
-            "http://example.com".to_string(),
-            None,
-            None,
-            None,
-            None,
-            Some("csv".to_string()),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        let sink = HttpSink::new(config).await.unwrap();
-
-        let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 123));
-        record.append(DataField::from_chars("name", "test"));
-
-        let result = sink.format_record(&record);
-        assert!(result.is_ok());
-
-        let csv_str = result.unwrap();
-        let lines: Vec<&str> = csv_str.lines().collect();
-
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0], "id,name");
-        assert_eq!(lines[1], "123,test");
-    }
-
-    #[tokio::test]
-    async fn format_record_kv() {
-        let config = HttpSinkConfig::new(
-            "http://example.com".to_string(),
-            None,
-            None,
-            None,
-            None,
-            Some("kv".to_string()),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        let sink = HttpSink::new(config).await.unwrap();
-
-        let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 123));
-        record.append(DataField::from_chars("name", "test"));
-
-        let result = sink.format_record(&record);
-        assert!(result.is_ok());
-
-        let kv_str = result.unwrap();
-        assert!(kv_str.contains("id=123"));
-        assert!(kv_str.contains("name=\"test\""));
-    }
-
-    #[tokio::test]
-    async fn format_record_raw() {
-        let config = HttpSinkConfig::new(
-            "http://example.com".to_string(),
-            None,
-            None,
-            None,
-            None,
-            Some("raw".to_string()),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        let sink = HttpSink::new(config).await.unwrap();
-
-        let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 123));
-        record.append(DataField::from_chars("name", "test"));
-
-        let result = sink.format_record(&record);
-        assert!(result.is_ok());
-
-        let raw_str = result.unwrap();
-        assert_eq!(raw_str, "123 test");
-    }
-
-    #[tokio::test]
-    async fn format_record_proto_text() {
-        let config = HttpSinkConfig::new(
-            "http://example.com".to_string(),
-            None,
-            None,
-            None,
-            None,
-            Some("proto-text".to_string()),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        let sink = HttpSink::new(config).await.unwrap();
-
-        let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 123));
-        record.append(DataField::from_chars("name", "test"));
-
-        let result = sink.format_record(&record);
-        assert!(result.is_ok());
-
-        let proto_str = result.unwrap();
-        assert!(proto_str.contains("id: 123"));
-        assert!(proto_str.contains("name: \"test\""));
-    }
-
-    #[tokio::test]
     async fn format_records_csv() {
         let config = HttpSinkConfig::new(
             "http://example.com".to_string(),
@@ -983,69 +791,6 @@ mod tests {
         assert_eq!(lines[0], "id,name");
         assert_eq!(lines[1], "1,alice");
         assert_eq!(lines[2], "2,bob");
-    }
-
-    #[tokio::test]
-    async fn csv_escape_special_characters() {
-        let config = HttpSinkConfig::new(
-            "http://example.com".to_string(),
-            None,
-            None,
-            None,
-            None,
-            Some("csv".to_string()),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        let sink = HttpSink::new(config).await.unwrap();
-
-        let mut record = DataRecord::default();
-        record.append(DataField::from_chars("text", "hello, world"));
-        record.append(DataField::from_chars("quote", "say \"hi\""));
-
-        let result = sink.format_record(&record);
-        assert!(result.is_ok());
-
-        let csv_str = result.unwrap();
-        assert!(csv_str.contains("\"hello, world\""));
-        assert!(csv_str.contains("\"say \"\"hi\"\"\""));
-    }
-
-    #[tokio::test]
-    async fn filter_ignore_fields() {
-        let config = HttpSinkConfig::new(
-            "http://example.com".to_string(),
-            None,
-            None,
-            None,
-            None,
-            Some("json".to_string()),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        let sink = HttpSink::new(config).await.unwrap();
-
-        let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 123));
-
-        // Add an ignored field
-        record.append(DataField::from_ignore("ignored"));
-
-        record.append(DataField::from_chars("name", "test"));
-
-        let result = sink.format_record(&record);
-        assert!(result.is_ok());
-
-        let json_str = result.unwrap();
-        assert!(!json_str.contains("ignored"));
-        assert!(json_str.contains("id"));
-        assert!(json_str.contains("name"));
     }
 
     #[tokio::test]

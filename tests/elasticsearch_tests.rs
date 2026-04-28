@@ -12,9 +12,9 @@ mod common;
 mod elasticsearch_common;
 
 #[cfg(feature = "external_integration")]
-#[path = "elasticsearch/integration_tests.rs"]
+#[path = "elasticsearch/sinks/integration_tests.rs"]
 mod integration_tests;
 
 #[cfg(feature = "external_performance")]
-#[path = "elasticsearch/performance_tests.rs"]
+#[path = "elasticsearch/sinks/performance_tests.rs"]
 mod performance_tests;
