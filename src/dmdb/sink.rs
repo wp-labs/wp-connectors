@@ -1,8 +1,9 @@
-use super::config::DmdbConf;
+use super::common::{DmdbConnectionHandle, connect_shared, escape_sql_literal, quote_identifier};
+use super::config::DmdbSinkConf;
 use async_trait::async_trait;
-use odbc_api::{Connection, ConnectionOptions, environment};
+use odbc_api::Connection;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::task;
 use wp_connector_api::{
     AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkError, SinkReason, SinkResult,
@@ -10,22 +11,29 @@ use wp_connector_api::{
 use wp_log::{error_data, warn_data};
 use wp_model_core::model::{DataRecord, DataType};
 
-type SharedDmdbConnection = Arc<Mutex<Connection<'static>>>;
-
+/// 达梦批量写入 Sink。
+/// 当前采用“多值 INSERT + 单事务提交”模式，保证一个 batch 内要么全部成功，要么全部回滚。
 pub struct DmdbSink {
-    connection: Option<SharedDmdbConnection>,
-    config: DmdbConf,
+    /// 当前 Sink 自己持有的 ODBC 连接句柄，事务写入时会在阻塞线程中独占使用。
+    connection: Option<DmdbConnectionHandle>,
+    /// 原始配置，主要用于 reconnect 时重建连接。
+    config: DmdbSinkConf,
+    /// 可选 schema。
     schema: Option<String>,
+    /// 目标表名。
     table: String,
+    /// 写入列顺序，决定 INSERT 字段列表与值的映射关系。
     column_names: Vec<String>,
+    /// 单条 INSERT 最多拼接的记录数。
     batch_size: usize,
+    /// SQL 执行超时。
     query_timeout_secs: Option<usize>,
 }
 
 impl DmdbSink {
     pub fn new(
-        connection: SharedDmdbConnection,
-        config: DmdbConf,
+        connection: DmdbConnectionHandle,
+        config: DmdbSinkConf,
         schema: Option<String>,
         table: String,
         column_names: Vec<String>,
@@ -43,19 +51,12 @@ impl DmdbSink {
         }
     }
 
-    fn shared_connection(&self) -> SinkResult<SharedDmdbConnection> {
+    fn shared_connection(&self) -> SinkResult<DmdbConnectionHandle> {
         self.connection.clone().ok_or_else(|| {
             SinkError::from(SinkReason::Sink(
                 "dmdb connection is not initialized".into(),
             ))
         })
-    }
-
-    pub async fn connect_shared(config: &DmdbConf) -> anyhow::Result<SharedDmdbConnection> {
-        let config = config.clone();
-        task::spawn_blocking(move || connect_shared_blocking(&config))
-            .await
-            .map_err(|err| anyhow::anyhow!("spawn dmdb connect task failed: {err}"))?
     }
 
     fn qualified_table_name(&self) -> String {
@@ -71,6 +72,7 @@ impl DmdbSink {
         }
     }
 
+    /// 生成固定的 INSERT 前缀，后续批次只需要追加 values 元组。
     fn insert_prefix(&self) -> String {
         format!(
             "INSERT INTO {} ({}) VALUES ",
@@ -83,6 +85,8 @@ impl DmdbSink {
         )
     }
 
+    /// 按配置列顺序提取 DataRecord 字段，缺失字段显式写为 `NULL`。
+    /// 这里不做类型推断，统一交给数据库侧做隐式转换或抛错。
     fn format_values_row(&self, record: &DataRecord) -> String {
         let field_map: HashMap<&str, String> = record
             .items
@@ -114,6 +118,7 @@ impl DmdbSink {
             return None;
         }
 
+        // 一个批次拼成一条多 values INSERT，减少数据库往返次数。
         let tuples = records
             .iter()
             .map(|record| self.format_values_row(record.as_ref()))
@@ -132,7 +137,7 @@ impl AsyncCtrl for DmdbSink {
     }
 
     async fn reconnect(&mut self) -> SinkResult<()> {
-        let connection = Self::connect_shared(&self.config).await.map_err(|err| {
+        let connection = connect_shared(&self.config.conn).await.map_err(|err| {
             SinkError::from(SinkReason::Sink(format!("reconnect dmdb fail: {err}")))
         })?;
         self.connection = Some(connection);
@@ -151,6 +156,7 @@ impl AsyncRecordSink for DmdbSink {
             return Ok(());
         }
 
+        // 按 batch_size 切分 SQL，但整次 sink_records 仍包在一个事务里执行。
         let mut statements = Vec::new();
         for chunk in data.chunks(self.batch_size) {
             let Some(statement) = self.build_insert_statement(chunk) else {
@@ -222,56 +228,8 @@ impl AsyncRawDataSink for DmdbSink {
     }
 }
 
-fn connect_shared_blocking(config: &DmdbConf) -> anyhow::Result<SharedDmdbConnection> {
-    let env =
-        environment().map_err(|err| anyhow::anyhow!("acquire odbc environment fail: {err}"))?;
-    let options = config.connect_options();
-    let connection = open_connection(env, config, options)?;
-    Ok(Arc::new(Mutex::new(connection)))
-}
-
-fn open_connection(
-    env: &'static odbc_api::Environment,
-    config: &DmdbConf,
-    options: ConnectionOptions,
-) -> anyhow::Result<Connection<'static>> {
-    if let Some(connection_string) = config.connection_string.as_deref().map(str::trim)
-        && !connection_string.is_empty()
-    {
-        return env
-            .connect_with_connection_string(connection_string, options)
-            .map_err(|err| anyhow::anyhow!("connect dmdb with connection_string fail: {err}"));
-    }
-
-    if !config.endpoint.trim().is_empty() {
-        let connection_string = config.generated_connection_string()?;
-        return env
-            .connect_with_connection_string(connection_string.as_str(), options)
-            .map_err(|err| {
-                anyhow::anyhow!("connect dmdb with generated connection string fail: {err}")
-            });
-    }
-
-    if let Some(dsn) = config.dsn.as_deref().map(str::trim)
-        && !dsn.is_empty()
-    {
-        return env
-            .connect(
-                dsn,
-                config.username.trim(),
-                config.password.as_str(),
-                options,
-            )
-            .map_err(|err| anyhow::anyhow!("connect dmdb with dsn fail: {err}"));
-    }
-
-    Err(anyhow::anyhow!(
-        "dmdb.connection_string, dmdb.endpoint or dmdb.dsn must provide at least one"
-    ))
-}
-
 fn execute_statements_in_transaction(
-    connection: SharedDmdbConnection,
+    connection: DmdbConnectionHandle,
     statements: Vec<String>,
     query_timeout_secs: Option<usize>,
 ) -> anyhow::Result<()> {
@@ -316,7 +274,8 @@ fn execute_statements_in_transaction(
     }
 }
 
-// 回滚事务并恢复自动commit模式
+/// 回滚事务并恢复自动提交模式。
+/// 如果 rollback 自身失败，则保留 autocommit=false，避免在未知事务状态下继续提交。
 fn rollback_and_restore_autocommit(
     err: anyhow::Error,
     connection: &Connection<'static>,
@@ -338,33 +297,28 @@ fn rollback_and_restore_autocommit(
     ))
 }
 
-fn quote_identifier(identifier: &str) -> String {
-    format!("\"{}\"", identifier.replace('"', "\"\""))
-}
-
-fn escape_sql_literal(value: &str) -> String {
-    value.replace('\'', "''")
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{DmdbSink, escape_sql_literal, quote_identifier};
-    use crate::dmdb::DmdbConf;
+    use super::DmdbSink;
+    use crate::dmdb::common::{escape_sql_literal, quote_identifier};
+    use crate::dmdb::{DmdbConnConf, DmdbSinkConf};
     use wp_model_core::model::{DataField, DataRecord};
 
-    fn build_test_conf() -> DmdbConf {
-        DmdbConf {
-            endpoint: String::new(),
-            dsn: None,
-            connection_string: None,
-            driver: String::new(),
-            username: String::new(),
-            password: String::new(),
-            schema: None,
+    fn build_test_conf() -> DmdbSinkConf {
+        DmdbSinkConf {
+            conn: DmdbConnConf {
+                endpoint: String::new(),
+                dsn: None,
+                connection_string: None,
+                driver: String::new(),
+                username: String::new(),
+                password: String::new(),
+                schema: None,
+                connect_timeout_secs: None,
+                query_timeout_secs: None,
+            },
             table: None,
             batch_size: None,
-            connect_timeout_secs: None,
-            query_timeout_secs: None,
         }
     }
 
