@@ -18,7 +18,7 @@ wp-parse-api =  "0.8"
 wp-model-core = "0.8"
 wp-log =  "0.2"
 wp-error =  "0.8"
-wp-specs =  "0.8"
+wp-specs =  "0.9"
 wp-conf-base = "0.2"
 wp-data-fmt = "0.2.4"
 
