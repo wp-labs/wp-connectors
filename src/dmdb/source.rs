@@ -8,11 +8,18 @@ use odbc_api::sys::SqlDataType;
 use odbc_api::{Cursor, DataType};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use std::thread;
+use std::time::{Duration, Instant};
+use tokio::sync::mpsc::{self, Receiver as TokioReceiver, Sender as TokioSender};
 use tokio::task;
-use tokio::time::sleep;
-use wp_connector_api::{DataSource, SourceBatch, SourceEvent, SourceReason, SourceResult, Tags};
-use wp_log::{info_data, warn_data};
+use wp_connector_api::{
+    CtrlRx, DataSource, SourceBatch, SourceEvent, SourceReason, SourceResult, Tags,
+};
+use wp_log::{info_ctrl, info_data, warn_ctrl, warn_data};
 use wp_model_core::event_id::next_wp_event_id;
 use wp_model_core::raw::RawData;
 
@@ -22,6 +29,24 @@ const DEFAULT_BATCH: usize = 512;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1000;
 const DEFAULT_ERROR_BACKOFF_MS: u64 = 2000;
 const CHECKPOINT_VERSION: u32 = 1;
+/// `CursorRow::get_text` 遇到空缓冲时只会先申请 256B，达梦 ODBC 在分段返回较长文本时会为每次首段读取输出 `01004/String truncate` 告警。
+/// 这里预留一个足够覆盖常见游标文本的容量，避免无意义的分段读取与日志噪音。
+const INITIAL_CURSOR_BUF_CAPACITY: usize = 128;
+/// payload 是整行 JSON，常见场景明显超过 256B；直接给较大的初始容量，并在逐行读取时复用，
+/// 既能减少 `SQLGetData` 的 repeated truncation warning，也能降低扩容次数。
+const INITIAL_PAYLOAD_BUF_CAPACITY: usize = 64 * 1024;
+/// 自适应 batch 起始值：从小值热身，避免首次查询就超过 picker 超时。
+const ADAPTIVE_BATCH_INITIAL: usize = 30;
+/// 自适应 batch 目标耗时上限（ms）。
+/// picker 的 blocking fetch timeout 固定是 300ms，这里保守压到 150ms，
+/// 给 ODBC 取数、CLOB 解码和 runtime 调度留足余量。
+const ADAPTIVE_BATCH_TARGET_MS: u64 = 150;
+/// 自适应 batch 的硬上限。
+/// 达梦场景下 payload 是整行 JSON/CLOB，batch 继续膨胀到 700+ / 1000+ 时，
+/// 很容易在第 N 轮被放大后的大批次跨过 300ms 超时阈值。
+const ADAPTIVE_BATCH_HARD_CAP: usize = 256;
+/// 预取队列按“批次”限流，避免后台无限预取导致内存膨胀。
+const PREFETCH_QUEUE_CAPACITY: usize = 8;
 
 /// 达梦增量 Source。
 /// 运行时会维护本地 checkpoint，以便重启后从上次成功消费位置继续拉取。
@@ -29,7 +54,7 @@ pub struct DmdbSource {
     /// Source 唯一标识，同时用于 checkpoint 文件命名。
     key: String,
     /// 当前 Source 自己持有的 ODBC 连接句柄，所有查询都在阻塞线程中串行执行。
-    connection: Option<DmdbConnectionHandle>,
+    connection: DmdbConnectionHandle,
     /// 带 schema 的表引用，直接参与 SQL 拼装。
     table_ref: String,
     /// 原始表名，用于回填到 payload 元数据。
@@ -54,6 +79,39 @@ pub struct DmdbSource {
     query_timeout_secs: Option<usize>,
     /// 透传给下游事件的标签。
     tags: Tags,
+    /// 后台预取线程写入的有界批次队列。
+    batch_rx: Option<TokioReceiver<PreparedBatch>>,
+    /// 当前 worker 的停止标记；仅在 worker 存活期间存在。
+    worker_stop: Option<Arc<AtomicBool>>,
+    /// worker 线程句柄。close 时仅发送 stop 并释放句柄，不在 async 上下文阻塞 join。
+    worker_handle: Option<thread::JoinHandle<()>>,
+}
+
+#[derive(Debug)]
+struct PreparedBatch {
+    events: SourceBatch,
+    last_cursor_raw: String,
+    round: u64,
+    lower_bound: Option<String>,
+}
+
+struct PrefetchWorker {
+    key: String,
+    connection: DmdbConnectionHandle,
+    table_ref: String,
+    table_name: String,
+    cursor_column: String,
+    cursor_plan: CursorPlan,
+    tags: Tags,
+    batch_cap: usize,
+    poll_interval: Duration,
+    error_backoff: Duration,
+    query_timeout_secs: Option<usize>,
+    stop_flag: Arc<AtomicBool>,
+    batch_tx: TokioSender<PreparedBatch>,
+    adaptive_batch: usize,
+    query_round: u64,
+    current_lower_bound: Option<String>,
 }
 
 impl DmdbSource {
@@ -138,7 +196,7 @@ impl DmdbSource {
 
         Ok(Self {
             key,
-            connection: Some(connection),
+            connection,
             table_ref,
             table_name: table.to_string(),
             cursor_column: cursor_column.to_string(),
@@ -151,84 +209,91 @@ impl DmdbSource {
             start_from,
             query_timeout_secs: config.conn.query_timeout_secs,
             tags,
+            batch_rx: None,
+            worker_stop: None,
+            worker_handle: None,
         })
+    }
+
+    fn ensure_worker_started(&mut self) -> SourceResult<()> {
+        if self.batch_rx.is_some() {
+            return Ok(());
+        }
+        let connection = self.connection.clone();
+        let (batch_tx, batch_rx) = mpsc::channel(PREFETCH_QUEUE_CAPACITY);
+        let key = self.key.clone();
+        let table_ref = self.table_ref.clone();
+        let table_name = self.table_name.clone();
+        let cursor_column = self.cursor_column.clone();
+        let cursor_plan = self.cursor_plan.clone();
+        let tags = self.tags.clone();
+        let batch_cap = self.batch;
+        let poll_interval = self.poll_interval;
+        let error_backoff = self.error_backoff;
+        let query_timeout_secs = self.query_timeout_secs;
+        let start_lower_bound = self.lower_bound_raw().map(str::to_string);
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        self.worker_stop = Some(Arc::clone(&stop_flag));
+        let handle = thread::Builder::new()
+            .name(format!("dmdb-source-worker-{key}"))
+            .spawn(move || {
+                PrefetchWorker {
+                    key,
+                    connection,
+                    table_ref,
+                    table_name,
+                    cursor_column,
+                    cursor_plan,
+                    tags,
+                    batch_cap,
+                    poll_interval,
+                    error_backoff,
+                    query_timeout_secs,
+                    stop_flag,
+                    batch_tx,
+                    adaptive_batch: ADAPTIVE_BATCH_INITIAL
+                        .min(batch_cap)
+                        .min(ADAPTIVE_BATCH_HARD_CAP),
+                    query_round: 0,
+                    current_lower_bound: start_lower_bound,
+                }
+                .run()
+            })
+            .map_err(|err| {
+                SourceReason::Other(format!("spawn dmdb source worker failed: {err}"))
+            })?;
+        self.batch_rx = Some(batch_rx);
+        self.worker_handle = Some(handle);
+        info_ctrl!(
+            "[dmdb-source] {} prefetch worker started (queue_cap={})",
+            self.key,
+            PREFETCH_QUEUE_CAPACITY
+        );
+        Ok(())
     }
 
     /// 主轮询循环：查询一批数据、组装事件，并在成功后推进 checkpoint。
     async fn recv_impl(&mut self) -> SourceResult<SourceBatch> {
-        loop {
-            let rows = match self.query_next_batch().await {
-                Ok(rows) => rows,
-                Err(err) => {
-                    warn_data!(
-                        "[dmdb-source] query failed, backing off {:?}: {}",
-                        self.error_backoff,
-                        err
-                    );
-                    sleep(self.error_backoff).await;
-                    continue;
-                }
-            };
-
-            if rows.is_empty() {
-                // 没有新数据不算错误，按轮询间隔继续等待。
-                sleep(self.poll_interval).await;
-                continue;
-            }
-
-            let mut batch = Vec::with_capacity(rows.len());
-            let mut last_cursor_raw = None;
-            for (cursor_raw, payload) in rows {
-                batch.push(SourceEvent::new(
-                    next_wp_event_id(),
-                    self.key.clone(),
-                    RawData::from_string(payload),
-                    self.tags.clone().into(),
-                ));
-                last_cursor_raw = Some(cursor_raw);
-            }
-
-            if let Some(last_cursor_raw) = last_cursor_raw {
-                self.persist_checkpoint(last_cursor_raw)?;
-            }
-            return Ok(batch);
-        }
-    }
-
-    /// 在阻塞线程中执行一轮批量查询，避免 ODBC 调用阻塞异步 runtime。
-    async fn query_next_batch(&self) -> SourceResult<Vec<(String, String)>> {
-        let connection = self.connection.clone().ok_or_else(|| {
-            SourceReason::Other("dmdb source connection is not initialized".into())
+        self.ensure_worker_started()?;
+        let batch_rx = self.batch_rx.as_mut().ok_or_else(|| {
+            SourceReason::Other("dmdb source batch receiver is not initialized".into())
         })?;
-        let lower_bound = self.lower_bound_raw().map(std::string::ToString::to_string);
-        let query_timeout_secs = self.query_timeout_secs;
-        let sql = self.build_batch_query();
-
-        task::spawn_blocking(move || {
-            query_next_batch_blocking(connection, sql, lower_bound, query_timeout_secs)
-        })
-        .await
-        .map_err(|err| SourceReason::Other(format!("spawn dmdb source query task failed: {err}")))?
-        .map_err(|err| {
-            SourceReason::SupplierError(format!("dmdb query batch failed: {err}")).into()
-        })
+        let prepared = batch_rx.recv().await.ok_or_else(|| {
+            SourceReason::SupplierError("dmdb prefetch worker channel closed".into())
+        })?;
+        info_ctrl!(
+            "[dmdb-source] round={} checkpoint advance from {:?} to {}",
+            prepared.round,
+            prepared.lower_bound.as_deref(),
+            prepared.last_cursor_raw
+        );
+        self.persist_checkpoint(prepared.last_cursor_raw)?;
+        Ok(prepared.events)
     }
 
     /// 获取本轮查询应使用的 lower bound，优先使用 checkpoint 中的最新游标。
     fn lower_bound_raw(&self) -> Option<&str> {
         resolve_lower_bound(self.checkpoint.as_ref(), self.start_from.as_deref())
-    }
-
-    /// 基于当前配置和 lower bound 生成增量拉取 SQL。
-    fn build_batch_query(&self) -> String {
-        build_batch_query(
-            &self.table_ref,
-            &self.table_name,
-            &self.cursor_column,
-            self.lower_bound_raw(),
-            self.batch,
-            &self.cursor_plan,
-        )
     }
 
     /// 加载并校验本地 checkpoint；不存在时自动创建目录并视为首次启动。
@@ -301,6 +366,22 @@ impl DataSource for DmdbSource {
 
     fn identifier(&self) -> String {
         self.key.clone()
+    }
+
+    async fn start(&mut self, _ctrl_rx: CtrlRx) -> SourceResult<()> {
+        self.ensure_worker_started()
+    }
+
+    async fn close(&mut self) -> SourceResult<()> {
+        self.batch_rx = None;
+        if let Some(stop_flag) = self.worker_stop.take() {
+            stop_flag.store(true, Ordering::SeqCst);
+        }
+        if let Some(handle) = self.worker_handle.take() {
+            drop(handle);
+        }
+        warn_ctrl!("[dmdb-source] {} prefetch worker stop requested", self.key);
+        Ok(())
     }
 }
 
@@ -496,7 +577,7 @@ impl CursorPlan {
             &cursor_meta.data_type,
             &cursor_meta.type_name,
         )?;
-        let payload_expr = build_payload_expr(&columns, cursor_column)?;
+        let payload_expr = build_payload_expr(&columns)?;
 
         Ok(Self {
             cursor_type,
@@ -569,11 +650,9 @@ impl CursorPlan {
     }
 }
 
-/// 在阻塞线程中执行增量 SQL，并把结果整理成 `(cursor_raw, payload)` 元组。
 fn query_next_batch_blocking(
     connection: DmdbConnectionHandle,
     sql: String,
-    _lower_bound: Option<String>,
     query_timeout_secs: Option<usize>,
 ) -> AnyResult<Vec<(String, String)>> {
     let conn_guard = connection
@@ -587,10 +666,15 @@ fn query_next_batch_blocking(
     };
 
     // 查询结果固定为两列：游标值 + JSON payload。
+    // `get_text` 会沿用传入 Vec 的 capacity 作为首段 SQLGetData 缓冲；
+    // 若每行都从空 Vec 开始，达梦驱动会反复输出 `01004/String truncate` 告警。
     let mut out = Vec::new();
+    let mut cursor_buf = Vec::with_capacity(INITIAL_CURSOR_BUF_CAPACITY);
+    let mut payload_buf = Vec::with_capacity(INITIAL_PAYLOAD_BUF_CAPACITY);
     while let Some(mut row) = cursor.next_row()? {
-        let mut cursor_buf = Vec::new();
-        let mut payload_buf = Vec::new();
+        cursor_buf.clear();
+        payload_buf.clear();
+
         let has_cursor = row
             .get_text(1, &mut cursor_buf)
             .map_err(|err| anyhow::anyhow!("read dmdb cursor_value failed: {err}"))?;
@@ -603,13 +687,144 @@ fn query_next_batch_blocking(
         if !has_payload {
             anyhow::bail!("dmdb source payload must not be NULL");
         }
-        let cursor_raw = String::from_utf8(cursor_buf)
+        let cursor_raw = String::from_utf8(cursor_buf.clone())
             .map_err(|err| anyhow::anyhow!("dmdb cursor_value is not valid utf-8: {err}"))?;
-        let payload = String::from_utf8(payload_buf)
+        let payload = String::from_utf8(payload_buf.clone())
             .map_err(|err| anyhow::anyhow!("dmdb payload is not valid utf-8: {err}"))?;
         out.push((cursor_raw, payload));
     }
     Ok(out)
+}
+
+fn next_adaptive_batch(current: usize, batch_cap: usize, elapsed_ms: u64) -> usize {
+    let target = ADAPTIVE_BATCH_TARGET_MS;
+    let upper = batch_cap.min(ADAPTIVE_BATCH_HARD_CAP);
+    if elapsed_ms < target * 6 / 10 {
+        (current * 3 / 2).min(upper)
+    } else if elapsed_ms < target {
+        (current * 11 / 10).max(current + 1).min(upper)
+    } else {
+        (current * 7 / 10).max(1)
+    }
+}
+
+impl PrefetchWorker {
+    fn run(mut self) {
+        while !self.stop_flag.load(Ordering::SeqCst) {
+            let round = self.next_round();
+            let lower_bound = self.current_lower_bound.clone();
+            let started = Instant::now();
+            let rows = match self.fetch_rows(&lower_bound, round) {
+                Ok(rows) => rows,
+                Err(err) => {
+                    warn_data!(
+                        "[dmdb-source] round={} query failed, backing off {:?}: {}",
+                        round,
+                        self.error_backoff,
+                        err
+                    );
+                    thread::sleep(self.error_backoff);
+                    continue;
+                }
+            };
+            let elapsed_ms = started.elapsed().as_millis() as u64;
+            self.log_round_end(round, &lower_bound, rows.len(), elapsed_ms);
+            self.adaptive_batch =
+                next_adaptive_batch(self.adaptive_batch, self.batch_cap, elapsed_ms);
+
+            if rows.is_empty() {
+                info_ctrl!(
+                    "[dmdb-source] round={} no new rows, next poll after {:?} (lower_bound={:?})",
+                    round,
+                    self.poll_interval,
+                    lower_bound.as_deref()
+                );
+                thread::sleep(self.poll_interval);
+                continue;
+            }
+
+            let prepared = self.prepare_batch(rows, round, lower_bound);
+            if self.batch_tx.blocking_send(prepared).is_err() {
+                warn_ctrl!(
+                    "[dmdb-source] {} prefetch queue closed, worker exit",
+                    self.key
+                );
+                break;
+            }
+        }
+        warn_ctrl!("[dmdb-source] {} prefetch worker exited", self.key);
+    }
+
+    fn next_round(&mut self) -> u64 {
+        self.query_round += 1;
+        self.query_round
+    }
+
+    fn fetch_rows(
+        &self,
+        lower_bound: &Option<String>,
+        round: u64,
+    ) -> AnyResult<Vec<(String, String)>> {
+        let sql = build_batch_query(
+            &self.table_ref,
+            &self.table_name,
+            &self.cursor_column,
+            lower_bound.as_deref(),
+            self.adaptive_batch,
+            &self.cursor_plan,
+        );
+        info_ctrl!(
+            "[dmdb-source] round={} query begin lower_bound={:?} adaptive_batch={} batch_cap={} timeout_secs={:?}",
+            round,
+            lower_bound.as_deref(),
+            self.adaptive_batch,
+            self.batch_cap,
+            self.query_timeout_secs
+        );
+        query_next_batch_blocking(self.connection.clone(), sql, self.query_timeout_secs)
+    }
+
+    fn log_round_end(
+        &self,
+        round: u64,
+        lower_bound: &Option<String>,
+        row_count: usize,
+        elapsed_ms: u64,
+    ) {
+        info_ctrl!(
+            "[dmdb-source] round={} query end rows={} elapsed_ms={} lower_bound={:?}",
+            round,
+            row_count,
+            elapsed_ms,
+            lower_bound.as_deref()
+        );
+    }
+
+    fn prepare_batch(
+        &mut self,
+        rows: Vec<(String, String)>,
+        round: u64,
+        lower_bound: Option<String>,
+    ) -> PreparedBatch {
+        let mut events = Vec::with_capacity(rows.len());
+        let mut last_cursor_raw = String::new();
+        for (cursor_raw, payload) in rows {
+            events.push(SourceEvent::new(
+                next_wp_event_id(),
+                self.key.clone(),
+                RawData::from_string(payload),
+                Arc::new(self.tags.clone()),
+            ));
+            last_cursor_raw = cursor_raw;
+        }
+        self.current_lower_bound = Some(last_cursor_raw.clone());
+        PreparedBatch {
+            events,
+            last_cursor_raw,
+            round,
+            lower_bound,
+        }
+    }
 }
 
 fn query_table_columns(
@@ -671,10 +886,7 @@ fn query_table_columns(
     Ok(rows)
 }
 
-/// 构造一行记录对应的 JSON payload 表达式。
-fn build_payload_expr(columns: &[DmdbColumnMeta], cursor_column: &str) -> AnyResult<String> {
-    // payload 保留游标列，便于下游 sink 继续使用数据库原始主键/递增列。
-    let _ = cursor_column;
+fn build_payload_expr(columns: &[DmdbColumnMeta]) -> AnyResult<String> {
     let mut parts = Vec::with_capacity(columns.len() + 2);
     for column in columns {
         parts.push(format!(
@@ -685,7 +897,7 @@ fn build_payload_expr(columns: &[DmdbColumnMeta], cursor_column: &str) -> AnyRes
     }
     parts.push("'warp_parse_table' VALUE t.__warp_parse_table".to_string());
     Ok(format!(
-        "CAST(JSON_OBJECT({} NULL ON NULL RETURNING VARCHAR2(32767)) AS VARCHAR(32767))",
+        "CAST(JSON_OBJECT({} NULL ON NULL) AS CLOB)",
         parts.join(", ")
     ))
 }
@@ -1321,6 +1533,7 @@ mod tests {
     }
 
     #[test]
+
     fn build_payload_expr_adds_table_field() {
         let columns = vec![
             DmdbColumnMeta {
@@ -1336,9 +1549,10 @@ mod tests {
                 ordinal_position: 2,
             },
         ];
-        let expr = build_payload_expr(&columns, "id").expect("build payload expr");
+        let expr = build_payload_expr(&columns).expect("build payload expr");
         assert!(expr.contains("'id' VALUE t.\"id\""));
         assert!(expr.contains("'name' VALUE t.\"name\""));
         assert!(expr.contains("'warp_parse_table' VALUE t.__warp_parse_table"));
+        assert!(expr.contains("AS CLOB"));
     }
 }
