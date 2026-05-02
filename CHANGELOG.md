@@ -7,10 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-04-30
+
+### Changed
+- Extract `dmdb` connector into separate `wp-connectors-labs` crate
+- Remove doc examples from `clickhouse`, `elasticsearch`, `http` module docs
+- Fix test assertions for OrionError Display format changes
+- Remove flaky timing assertion from `send_with_retry_exponential_backoff_timing` test
+
 ### Fixed
 - Fix `ErrorOweBase` and `ToStructError` import paths for orion-error 0.7.2
 - Replace `StructError::into()` with explicit `anyhow` conversion in Kafka
   source `create_topics()` to fix missing `StdError` impl
+- Fix doctest compilation for `?` operator with `SinkError` → `anyhow::Error`
 
 ## [0.12.0] - 2026-04-11
 
@@ -123,7 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.13.2...HEAD
+[0.13.2]: https://github.com/wp-labs/wp-connectors/compare/v0.12.0...v0.13.2
 [0.12.0]: https://github.com/wp-labs/wp-connectors/compare/v0.10.0...v0.12.0
 [0.10.0]: https://github.com/wp-labs/wp-connectors/compare/v0.7.8...v0.10.0
 [0.8.0]: https://github.com/wp-labs/wp-connectors/compare/v0.7.8...v0.8.0
