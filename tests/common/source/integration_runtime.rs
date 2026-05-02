@@ -6,7 +6,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 use std::time::Instant;
 use tokio::time::{Instant as TokioInstant, sleep, timeout};
-use wp_connector_api::{SourceBuildCtx, SourceFactory, SourceHandle, SourceSpec};
+use wp_connector_api::{SourceBuildCtx, SourceFactory, SourceHandle, SourceResult, SourceSpec};
 
 /// Source 集成测试运行时。
 pub struct SourceIntegrationRuntime<T: ComponentTool, F: SourceFactory> {
@@ -140,7 +140,7 @@ impl<T: ComponentTool + Sync, F: SourceFactory> SourceIntegrationRuntime<T, F> {
                             eof_count += 1;
                             continue;
                         }
-                        close_all_sources(&mut service.sources).await?;
+                        let _ = close_all_sources(&mut service.sources).await;
                         return Err(anyhow::anyhow!("{err}"));
                     }
                     Err(_) => {
@@ -155,7 +155,7 @@ impl<T: ComponentTool + Sync, F: SourceFactory> SourceIntegrationRuntime<T, F> {
         }
 
         let elapsed = started_at.elapsed();
-        close_all_sources(&mut service.sources).await?;
+        let _ = close_all_sources(&mut service.sources).await;
 
         println!(
             "{}: 收集完成，sources={}, expected_events={}, events={}, attempts={}, idle={}, eof={}, elapsed={:.2}s",
@@ -181,13 +181,9 @@ impl<T: ComponentTool + Sync, F: SourceFactory> SourceIntegrationRuntime<T, F> {
     }
 }
 
-async fn close_all_sources(sources: &mut [SourceHandle]) -> Result<()> {
+async fn close_all_sources(sources: &mut [SourceHandle]) -> SourceResult<()> {
     for handle in sources {
-        handle
-            .source
-            .close()
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        handle.source.close().await?;
     }
     Ok(())
 }
