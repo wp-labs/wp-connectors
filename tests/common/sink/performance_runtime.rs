@@ -175,7 +175,11 @@ impl<T: ComponentTool + Sync, F: SinkFactory + Sync> SinkPerformanceRuntime<T, F
                 connector_id: format!("{}_task_{}", base_spec.connector_id, task_id),
                 ..base_spec.clone()
             };
-            let sink = sink_info.factory().build(&spec, &ctx).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+            let sink = sink_info
+                .factory()
+                .build(&spec, &ctx)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
             task_specs.push((task_id, assigned, sink));
         }
 

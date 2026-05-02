@@ -77,7 +77,11 @@ impl<T: ComponentTool + Sync, F: SourceFactory> SourceIntegrationRuntime<T, F> {
         };
 
         let ctx = SourceBuildCtx::new(PathBuf::from("."));
-        let mut service = source_info.factory().build(&spec, &ctx).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        let mut service = source_info
+            .factory()
+            .build(&spec, &ctx)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         let source_count = service.sources.len();
         if source_count == 0 {
             anyhow::bail!("{} 未返回任何 SourceHandle", display_name);
@@ -179,7 +183,11 @@ impl<T: ComponentTool + Sync, F: SourceFactory> SourceIntegrationRuntime<T, F> {
 
 async fn close_all_sources(sources: &mut [SourceHandle]) -> Result<()> {
     for handle in sources {
-        handle.source.close().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        handle
+            .source
+            .close()
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
     }
     Ok(())
 }
