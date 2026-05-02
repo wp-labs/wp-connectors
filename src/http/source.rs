@@ -8,7 +8,6 @@ use actix_web::http::{
     header::{CONTENT_ENCODING, CONTENT_TYPE},
 };
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, web};
-use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
 use flate2::read::GzDecoder;
@@ -358,7 +357,7 @@ fn resolve_compression(
     query: &RequestQuery,
 ) -> Result<CompressionKind, String> {
     // 只认 Content-Encoding，不读取 Accept-Encoding。
-    // 原因：这里处理的是“请求体已经采用何种编码”，不是“客户端希望响应怎么编码”。
+    // 原因：这里处理的是"请求体已经采用何种编码"，不是"客户端希望响应怎么编码"。
     let compression = query
         .compression
         .as_deref()
@@ -383,13 +382,10 @@ fn resolve_compression(
     }
 }
 
-fn decode_body(body: web::Bytes, compression: CompressionKind) -> anyhow::Result<Bytes> {
+fn decode_body(body: web::Bytes, compression: CompressionKind) -> SourceResult<Bytes> {
     match compression {
         CompressionKind::None => Ok(body),
         CompressionKind::Gzip => {
-            // Actix may already decode request bodies based on Content-Encoding,
-            // so only decompress when the payload still carries the gzip signature.
-            // 风险：不同框架/feature 组合对请求解压的时机可能不同，这里做兼容判断，避免二次解压失败。
             if !looks_like_gzip(body.as_ref()) {
                 return Ok(body);
             }
@@ -397,7 +393,7 @@ fn decode_body(body: web::Bytes, compression: CompressionKind) -> anyhow::Result
             let mut decoded = Vec::new();
             decoder
                 .read_to_end(&mut decoded)
-                .context("gzip decompression failed")?;
+                .map_err(|e| SourceError::from(SourceReason::SupplierError(format!("gzip decompression failed: {e}"))))?;
             Ok(Bytes::from(decoded))
         }
     }
@@ -407,18 +403,19 @@ fn looks_like_gzip(body: &[u8]) -> bool {
     body.len() >= 2 && body[0] == 0x1f && body[1] == 0x8b
 }
 
-fn parse_payloads(body: &[u8], fmt: &str) -> anyhow::Result<Vec<Bytes>> {
+fn parse_payloads(body: &[u8], fmt: &str) -> SourceResult<Vec<Bytes>> {
     match fmt {
         "json" => parse_json_payloads(body),
         "ndjson" => parse_ndjson_payloads(body),
-        _ => anyhow::bail!("unsupported fmt: {fmt}"),
+        _ => Err(SourceError::from(SourceReason::Other(format!("unsupported fmt: {fmt}")))),
     }
 }
 
-fn parse_json_payloads(body: &[u8]) -> anyhow::Result<Vec<Bytes>> {
-    // 业务语义：json 模式允许单对象或数组输入，统一展开成“多条记录”的内部表示，
-    // 这样 source 下游不需要再区分顶层结构。
-    let value: Value = serde_json::from_slice(body).context("invalid json payload")?;
+fn parse_json_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
+    let value: Value = serde_json::from_slice(body).map_err(|e| {
+        let msg = format!("invalid json payload: {e}");
+        SourceError::from(SourceReason::SupplierError(msg.clone())).with_detail(msg)
+    })?;
     let values = match value {
         Value::Array(values) => values,
         other => vec![other],
@@ -429,13 +426,16 @@ fn parse_json_payloads(body: &[u8]) -> anyhow::Result<Vec<Bytes>> {
         .map(|value| {
             serde_json::to_vec(&value)
                 .map(Bytes::from)
-                .map_err(anyhow::Error::from)
+                .map_err(|e| SourceError::from(SourceReason::SupplierError(format!("json serialize: {e}"))))
         })
         .collect()
 }
 
-fn parse_ndjson_payloads(body: &[u8]) -> anyhow::Result<Vec<Bytes>> {
-    let text = std::str::from_utf8(body).context("ndjson payload is not valid utf-8")?;
+fn parse_ndjson_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
+    let text = std::str::from_utf8(body).map_err(|e| {
+        let msg = format!("ndjson invalid utf-8: {e}");
+        SourceError::from(SourceReason::SupplierError(msg.clone())).with_detail(msg)
+    })?;
     let mut lines = Vec::new();
 
     for (idx, raw_line) in text.lines().enumerate() {
@@ -443,11 +443,14 @@ fn parse_ndjson_payloads(body: &[u8]) -> anyhow::Result<Vec<Bytes>> {
         if line.is_empty() {
             continue;
         }
-        // ndjson 不做整体 JSON 包装，但每一行必须是合法 JSON。
-        // 这样能尽早把坏数据挡在入口，避免下游 parser 收到格式污染的行。
-        let value: Value = serde_json::from_str(line)
-            .with_context(|| format!("invalid ndjson line {}", idx + 1))?;
-        lines.push(Bytes::from(serde_json::to_vec(&value)?));
+        let value: Value = serde_json::from_str(line).map_err(|e| {
+            let msg = format!("invalid ndjson line {}: {e}", idx + 1);
+            SourceError::from(SourceReason::SupplierError(msg.clone())).with_detail(msg)
+        })?;
+        lines.push(Bytes::from(
+            serde_json::to_vec(&value)
+                .map_err(|e| SourceError::from(SourceReason::SupplierError(format!("ndjson serialize line {}: {e}", idx + 1))))?
+        ));
     }
 
     Ok(lines)
@@ -537,7 +540,7 @@ mod tests {
     fn invalid_ndjson_line_is_rejected() {
         let err = parse_payloads(b"{\"a\":1}\nnot-json\n", "ndjson")
             .expect_err("invalid ndjson should fail");
-        assert!(err.to_string().contains("invalid ndjson line 2"));
+        assert!(matches!(err.reason(), SourceReason::SupplierError(m) if m.contains("invalid ndjson line 2")));
     }
 
     #[test]
