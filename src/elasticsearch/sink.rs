@@ -64,8 +64,6 @@ impl ElasticsearchSink {
     /// # Arguments
     /// * `config` - Elasticsearch 连接与写入配置
     ///
-    /// # Returns
-    /// * `anyhow::Result<Self>` - 成功返回初始化后的 sink
     pub async fn new(config: ElasticsearchSinkConfig) -> SinkResult<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))

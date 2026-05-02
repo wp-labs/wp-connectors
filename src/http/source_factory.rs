@@ -28,9 +28,7 @@ impl SourceFactory for HttpSourceFactory {
         // 使用有界队列而不是无界队列，至少给入口层留一个明确的背压边界。
         // 当前容量是经验值；若高并发场景下仍然偏小/偏大，后续可以继续参数化。
         let (sender, receiver) = mpsc::channel(http_source_queue_capacity());
-        HttpSource::register(&config, sender)
-            .await
-            .map_err(|err| SourceReason::Other(err.to_string()))?;
+        HttpSource::register(&config, sender).await?;
 
         let meta_tags = build_source_tags(&spec.tags, &config);
         let source = HttpSource::new(spec.name.clone(), meta_tags.clone(), config, receiver);

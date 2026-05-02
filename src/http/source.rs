@@ -17,7 +17,7 @@ use serde_json::Value;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use wp_conf_base::ConfParser;
 use wp_connector_api::{
-    CtrlRx, DataSource, SourceBatch, SourceEvent, SourceReason, SourceResult, Tags,
+    CtrlRx, DataSource, SourceBatch, SourceError, SourceEvent, SourceReason, SourceResult, Tags,
 };
 use wp_model_core::event_id::next_wp_event_id;
 use wp_model_core::raw::RawData;
@@ -74,7 +74,7 @@ impl HttpSource {
     pub async fn register(
         config: &HttpSourceConfig,
         sender: mpsc::Sender<Vec<Bytes>>,
-    ) -> anyhow::Result<()> {
+    ) -> SourceResult<()> {
         http_source_runtime()
             .register(config.port, config.path.clone(), sender)
             .await
@@ -150,13 +150,13 @@ impl HttpSourceRuntime {
         port: u16,
         path: String,
         sender: mpsc::Sender<Vec<Bytes>>,
-    ) -> anyhow::Result<()> {
+    ) -> SourceResult<()> {
         let port_runtime = self.ensure_port_runtime(port).await?;
         let mut routes = port_runtime.routes.write().await;
         if routes.contains_key(&path) {
-            // `port + path` 是 source 的业务唯一键；重复注册直接拒绝，
-            // 否则多个 source 会收到同一路径请求，语义不明确。
-            anyhow::bail!("http source already exists for {}{}", port, path);
+            return Err(SourceError::from(SourceReason::Other(format!(
+                "http source already exists for {port}{path}"
+            ))));
         }
         routes.insert(path, RouteTarget { sender });
         Ok(())
@@ -188,7 +188,7 @@ impl HttpSourceRuntime {
         }
     }
 
-    async fn ensure_port_runtime(&self, port: u16) -> anyhow::Result<Arc<PortRuntime>> {
+    async fn ensure_port_runtime(&self, port: u16) -> SourceResult<Arc<PortRuntime>> {
         let mut ports = self.ports.lock().await;
         if let Some(runtime) = ports.get(&port) {
             return Ok(runtime.clone());
@@ -216,7 +216,7 @@ impl PortRuntime {
         }
     }
 
-    fn start(self: &Arc<Self>) -> anyhow::Result<()> {
+    fn start(self: &Arc<Self>) -> SourceResult<()> {
         let app_state = self.clone();
         let log_state = self.clone();
         let server = HttpServer::new(move || {
@@ -227,7 +227,8 @@ impl PortRuntime {
                 .default_service(web::to(handle_request))
         })
         .workers(1)
-        .bind(("0.0.0.0", self.port))?
+        .bind(("0.0.0.0", self.port))
+        .map_err(|e| SourceError::from(SourceReason::Other(format!("bind port {}: {e}", self.port))))?
         .run();
 
         let handle = server.handle();

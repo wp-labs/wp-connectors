@@ -30,8 +30,6 @@ impl ClickHouseSink {
     /// # Arguments
     /// * `config` - ClickHouse 连接与写入配置
     ///
-    /// # Returns
-    /// * `anyhow::Result<Self>` - 成功返回初始化后的 sink
     pub async fn new(config: ClickHouseSinkConfig) -> SinkResult<Self> {
         // 构建 ClickHouse 客户端
         let client = Client::default()
