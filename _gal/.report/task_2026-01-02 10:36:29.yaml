@@ -1,0 +1,27 @@
+!Job
+name: flow
+tasks:
+- name: config
+  begin: 2026-01-02 10:36:29
+  stdout: ''
+  result: !Ok
+    running_time: ''
+  actions: []
+- name: config
+  begin: 2026-01-02 10:36:29
+  stdout: ''
+  result: !Ok
+    running_time: ''
+  actions: []
+- name: config
+  begin: 2026-01-02 10:36:29
+  stdout: ''
+  result: !Ok
+    running_time: ''
+  actions: []
+- name: config
+  begin: 2026-01-02 10:36:29
+  stdout: ''
+  result: !Ok
+    running_time: ''
+  actions: []

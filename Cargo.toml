@@ -5,14 +5,14 @@ members = ["."]  # 当前包作为workspace成员
 [workspace.package]
 version = "0.13.1" # @gxl:set(version)
 edition = "2024"
-description = "Unified connector for wp-flow system supporting both source and sink functionality"
+description = "Stable connectors for warp-parse supporting source and sink functionality"
 authors = ["WP Labs Team"]
 license = "Apache-2.0"
 repository = "https://github.com/wp-labs/wp-connectors"
 homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
-# WP Core Dependencies - 使用模板变量
+# WP Core Dependencies
 wp-connector-api = "0.9"
 wp-parse-api =  "0.9"
 wp-model-core = "0.8"
@@ -23,11 +23,9 @@ wp-conf-base = "0.3"
 wp-data-fmt = "0.2"
 
 orion_exp = "0.1"
-# Orion Dependencies
 orion-error = "0.7"
 orion_conf = { version = "0.6", features = ["yaml", "toml"] }
 
-# Core Runtime Dependencies
 async-trait = "0.1"
 anyhow = "1.0"
 chrono = "0.4"
@@ -42,8 +40,6 @@ winnow = "1.0"
 educe = { version = "0.6", default-features = false, features = ["Debug", "Default"] }
 sea-orm = { version = "1.1", default-features = false, features = ["sqlx-mysql", "sqlx-postgres", "runtime-tokio-rustls"] }
 sqlx = { version = "0.8", default-features = false, features = ["mysql", "runtime-tokio", "tls-native-tls"]  }
-odbc-api = { version = "24.1", default-features = false, features = ["odbc_version_3_5"] }
-
 
 # Optional Feature Dependencies
 actix-web = "4.12"
@@ -64,24 +60,19 @@ env_logger = "0.11"
 name = "wp-connectors"
 edition = "2024"
 version.workspace = true
-description = "Unified connector for wp-flow system supporting both source and sink functionality"
+description = "Stable connectors for warp-parse: http, doris, elasticsearch, kafka, mysql, postgres, clickhouse, prometheus, victoriametrics, victorialogs, count"
 authors = ["WP Labs Team"]
 license = "Apache-2.0"
 repository = "https://github.com/wp-labs/wp-connectors"
 homepage = "https://github.com/wp-labs/wp-connectors"
 
 [features]
-# 默认只编译 Kafka 相关代码；需要 Prometheus 导出器时启用 `prometheus` 特性
-#default = ["kafka"]
-default = ["kafka", "mysql", "postgres", "prometheus","victoriametrics", "victorialogs","doris","count","clickhouse","elasticsearch","http", "dmdb"]
+default = ["kafka", "mysql", "postgres", "prometheus", "victoriametrics", "victorialogs", "doris", "count", "clickhouse", "elasticsearch", "http"]
 kafka = [ "dep:rdkafka-wrap"]
 mysql = []
 postgres = []
-dmdb = ["dep:odbc-api"]
 count = []
 victorialogs = []
-external_integration = []
-external_performance = []
 prometheus = [
     "dep:actix-web",
     "dep:prometheus",
@@ -102,10 +93,8 @@ doris = ["dep:reqwest"]
 elasticsearch = ["dep:reqwest"]
 clickhouse = ["dep:reqwest", "dep:clickhouse"]
 http = ["dep:reqwest", "dep:flate2", "dep:base64", "dep:actix-web"]
-full = ["kafka", "mysql", "postgres", "dmdb", "prometheus", "elasticsearch", "clickhouse", "victoriametrics", "victorialogs", "doris", "http"]
 
 [dependencies]
-# WP Dependencies - using workspace versions
 wp-connector-api = { workspace = true }
 wp-parse-api = { workspace = true }
 wp-model-core = { workspace = true }
@@ -115,11 +104,9 @@ wp-specs = { workspace = true }
 wp-conf-base = { workspace = true }
 wp-data-fmt = { workspace = true }
 orion_exp = { workspace = true }
-# Orion Dependencies - using workspace versions
 orion-error = { workspace = true }
 orion_conf = { workspace = true }
 
-# Core Dependencies - using workspace versions
 async-trait = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
@@ -133,9 +120,8 @@ bytes = { workspace = true }
 winnow = { workspace = true }
 educe = { workspace = true }
 sea-orm = { workspace = true }
-odbc-api = { workspace = true, optional = true }
+sqlx = { workspace = true }
 
-# Optional Dependencies - using workspace versions
 actix-web = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 clickhouse = { workspace = true, optional = true }
@@ -156,9 +142,7 @@ rand = { workspace = true }
 sqlx = { workspace = true }
 async-broadcast = "0.7"
 sysinfo = { version = "0.38", default-features = false, features = ["system"] }
-# criterion = { version = "0.5", features = ["async_tokio"] }
 
-# Examples in subdirectories
 [[example]]
 name = "http_sink_example"
 path = "examples/http/http_sink_example.rs"

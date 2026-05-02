@@ -5,21 +5,21 @@ pub const WP_SRC_VAL: &str = "wp_src_val";
 mod http_utils;
 pub mod utils;
 
-// Kafka：默认启用（feature = "kafka" 是默认特性）
+// Kafka
 #[cfg(feature = "kafka")]
 pub mod kafka;
 
-// MySQL：默认启用（feature = "mysql" 是默认特性）
+// MySQL
 #[cfg(feature = "mysql")]
 pub mod mysql;
 
-// Postgres：默认启用（feature = "postgres" 是默认特性）
+// Postgres
 #[cfg(feature = "postgres")]
 pub mod postgres;
 
-// 达梦数据库：可选功能，启用方式 `--features dmdb`
-#[cfg(feature = "dmdb")]
-pub mod dmdb;
+// ClickHouse
+#[cfg(feature = "clickhouse")]
+pub mod clickhouse;
 
 // Prometheus：可选功能，启用方式 `--features prometheus`
 #[cfg(feature = "prometheus")]
@@ -44,10 +44,6 @@ pub mod elasticsearch;
 // VictoriaMetrics：可选功能，启用方式 `--features victoriametric`
 #[cfg(feature = "victoriametrics")]
 pub mod victoriametrics;
-
-// ClickHouse：可选功能，启用方式 `--features clickhouse`
-#[cfg(feature = "clickhouse")]
-pub mod clickhouse;
 
 // HTTP：可选功能，启用方式 `--features http`
 #[cfg(feature = "http")]

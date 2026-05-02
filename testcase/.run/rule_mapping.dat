@@ -1,0 +1,24 @@
+--- name_mdl_res------
+/oml/example 
+/oml/upstream 
+
+--- rule_mdl_res(rule_name, model_name) --- 
+/upstream/example_json : (/oml/upstream,/upstream/*) 
+/example/nginx : (/oml/example,/example/*) 
+
+
+--- rule_sink( wpl_rule ,sink_name ) --- 
+/upstream/example_json : (/upstream/,/oml/upstream) 
+/example/nginx : (testcase,/oml/example) 
+
+--- sink_rule_relation( sink_name, rule_name) --- 
+testcase : /example/nginx 
+/upstream/ : /upstream/example_json 
+ 
+
+
+--- sink_mdl_relation( sink_name, model_name) --- 
+testcase : /oml/example 
+/upstream/ : /oml/upstream 
+
+

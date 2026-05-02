@@ -653,7 +653,7 @@ mod tests {
         record.append(DataField::from_digit("id", 1));
 
         let err = sink.sink_record(&record).await.unwrap_err();
-        assert!(err.to_string().contains("stopped"));
+        assert!(matches!(err.reason(), SinkReason::Sink(m) if m.contains("stopped")));
     }
 
     #[tokio::test]
@@ -770,7 +770,7 @@ mod tests {
             .sink_records(vec![Arc::new(sample_record())])
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("type mismatch"));
+        assert!(matches!(err.reason(), SinkReason::Sink(m) if m.contains("type mismatch")));
         fail_mock.assert_calls_async(1).await;
     }
 
