@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
-    SinkHandle, SinkReason, SinkResult, SinkSpec, SourceBuildCtx, SourceDefProvider, SourceFactory,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory,
+    SinkHandle, SinkResult, SinkSpec, SourceBuildCtx, SourceDefProvider, SourceFactory,
     SourceHandle, SourceMeta, SourceReason, SourceResult, SourceSpec, SourceSvcIns,
 };
 
@@ -59,9 +59,7 @@ impl SinkFactory for CountSinkFactory {
     }
 
     async fn build(&self, _spec: &SinkSpec, _ctx: &SinkBuildCtx) -> SinkResult<SinkHandle> {
-        let sink = CountSink::new().await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!("init count sink failed: {err}")))
-        })?;
+        let sink = CountSink::new().await?;
 
         Ok(SinkHandle::new(Box::new(sink)))
     }

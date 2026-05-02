@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory,
     SinkHandle, SinkReason, SinkResult, SinkSpec,
 };
 
@@ -74,9 +74,7 @@ impl SinkFactory for HttpSinkFactory {
             compression,
         );
 
-        let sink = HttpSink::new(config).await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!("init http sink failed: {err}")))
-        })?;
+        let sink = HttpSink::new(config).await?;
 
         Ok(SinkHandle::new(Box::new(sink)))
     }

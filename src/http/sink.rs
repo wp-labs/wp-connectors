@@ -45,12 +45,13 @@ impl HttpSink {
     /// # Returns
     ///
     /// Returns a Result containing the initialized HttpSink or an error
-    pub async fn new(config: HttpSinkConfig) -> anyhow::Result<Self> {
+    pub async fn new(config: HttpSinkConfig) -> SinkResult<Self> {
         // Build reqwest client with timeout configuration
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
-            .no_proxy() // Disable all proxies for consistency
-            .build()?;
+            .no_proxy()
+            .build()
+            .map_err(|e| SinkError::from(SinkReason::sink(format!("http client build: {e}"))))?;
 
         // Generate unique instance ID from global atomic counter
         let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);

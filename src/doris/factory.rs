@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory,
     SinkHandle, SinkReason, SinkResult, SinkSpec,
 };
 
@@ -72,9 +72,7 @@ impl SinkFactory for DorisSinkFactory {
             headers,
         );
 
-        let sink = DorisSink::new(cfg).await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!("init doris sink failed: {err}")))
-        })?;
+        let sink = DorisSink::new(cfg).await?;
 
         Ok(SinkHandle::new(Box::new(sink)))
     }

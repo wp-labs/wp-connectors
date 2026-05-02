@@ -2,7 +2,7 @@ use crate::clickhouse::{ClickHouseSink, ClickHouseSinkConfig};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory,
     SinkHandle, SinkReason, SinkResult, SinkSpec,
 };
 
@@ -69,11 +69,7 @@ impl SinkFactory for ClickHouseSinkFactory {
             max_retries,
         );
 
-        let sink = ClickHouseSink::new(cfg).await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!(
-                "init clickhouse sink failed: {err}"
-            )))
-        })?;
+        let sink = ClickHouseSink::new(cfg).await?;
 
         Ok(SinkHandle::new(Box::new(sink)))
     }

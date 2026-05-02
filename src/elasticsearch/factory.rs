@@ -2,7 +2,7 @@ use crate::elasticsearch::{ElasticsearchSink, ElasticsearchSinkConfig};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory,
     SinkHandle, SinkReason, SinkResult, SinkSpec,
 };
 
@@ -67,11 +67,7 @@ impl SinkFactory for ElasticsearchSinkFactory {
             max_retries,
         );
 
-        let sink = ElasticsearchSink::new(cfg).await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!(
-                "init elasticsearch sink failed: {err}"
-            )))
-        })?;
+        let sink = ElasticsearchSink::new(cfg).await?;
 
         Ok(SinkHandle::new(Box::new(sink)))
     }

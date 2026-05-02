@@ -25,7 +25,7 @@ pub struct CountSink {
 }
 
 impl CountSink {
-    pub async fn new() -> anyhow::Result<Self> {
+    pub async fn new() -> SinkResult<Self> {
         // 获取当前 tokio 任务 ID
         let task_id = tokio::task::try_id()
             .map(|id| format!("{:?}", id))

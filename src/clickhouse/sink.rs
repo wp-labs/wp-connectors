@@ -32,7 +32,7 @@ impl ClickHouseSink {
     ///
     /// # Returns
     /// * `anyhow::Result<Self>` - 成功返回初始化后的 sink
-    pub async fn new(config: ClickHouseSinkConfig) -> anyhow::Result<Self> {
+    pub async fn new(config: ClickHouseSinkConfig) -> SinkResult<Self> {
         // 构建 ClickHouse 客户端
         let client = Client::default()
             .with_url(&config.endpoint)

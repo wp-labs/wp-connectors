@@ -79,11 +79,12 @@ impl DorisSink {
     ///
     /// # Returns
     /// * `anyhow::Result<Self>` - 成功返回初始化后的 sink
-    pub async fn new(config: DorisSinkConfig) -> anyhow::Result<Self> {
+    pub async fn new(config: DorisSinkConfig) -> SinkResult<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
-            .no_proxy() // 禁用所有代理
-            .build()?;
+            .no_proxy()
+            .build()
+            .map_err(|e| SinkError::from(SinkReason::sink(format!("doris client build: {e}"))))?;
 
         // 预先构建完整的 Stream Load URL
         let url = format!(
