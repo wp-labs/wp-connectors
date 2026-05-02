@@ -5,23 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
 ## [Unreleased]
 
 ## [0.13.2] - 2026-05-03
 
 ### Changed
-- Migrate `ComponentTool` trait and implementations (`DockerComposeTool`,
-  `ShellScriptTool`) from `anyhow::Result` to `ToolResult`/`ToolReason`,
-  based on `derive(OrionError)`
-- Migrate sink integration/performance runtimes from `anyhow::Result` to
-  `RuntimeResult`/`RuntimeReason` with `ToolReason`/`SourceReason`/`SinkReason`
-  union
-- Remove `to_anyhow()`/`runtime_anyhow()` bridge functions; integration test
-  entry points return `RuntimeResult` directly, using `ToolResultExt::into_rt()`
-- Migrate sink constructors (`ClickHouseSink`, `DorisSink`, `HttpSink`,
-  `ElasticsearchSink`, `CountSink`) from `anyhow::Result` to `SinkResult`
-- Migrate `HttpSource::register`/`start`/`ensure_port_runtime` and
-  `decode_body`/`parse_payloads` from `anyhow::Result` to `SourceResult`
+- Migrate component testing infrastructure from `anyhow::Result` to OrionError system
+- Migrate sink and HTTP source constructors from `anyhow::Result` to `SinkResult`/`SourceResult`
 - Extract `dmdb` connector into separate `wp-connectors-labs` crate
 - Remove doc examples from `clickhouse`, `elasticsearch`, `http` module docs
 - Fix test assertions for OrionError Display format changes
@@ -29,9 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Fix `ErrorOweBase` and `ToStructError` import paths for orion-error 0.7.2
-- Replace `StructError::into()` with explicit `anyhow` conversion in Kafka
-  source `create_topics()` to fix missing `StdError` impl
-- Fix doctest compilation for `?` operator with `SinkError` → `anyhow::Error`
+- Fix `StdError` conversion in Kafka source `create_topics()`
+- Fix doctest compilation for `SinkError`/`SourceError` in doc examples
 
 ## [0.12.0] - 2026-04-11
 
