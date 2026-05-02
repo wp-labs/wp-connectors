@@ -5,7 +5,7 @@ use anyhow::Result;
 use wp_connectors::doris::DorisSinkFactory;
 
 use crate::common::{
-    component_tools::DockerComposeTool,
+    component_tools::{to_anyhow, runtime_anyhow, DockerComposeTool},
     sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
 };
 use crate::doris_common::{
@@ -18,7 +18,7 @@ use crate::doris_common::{
 #[ignore = "集成测试默认忽略，请按需手动执行"]
 async fn test_doris_sink_full_integration() -> Result<()> {
     // 1. 创建 Docker Compose 工具
-    let docker_tool = DockerComposeTool::new("tests/doris/component/integration_tests.yml")?;
+    let docker_tool = to_anyhow(DockerComposeTool::new("tests/doris/component/integration_tests.yml"))?;
 
     // 2. 创建 Sink 集成测试信息
     let sink_info = SinkInfo::new(DorisSinkFactory, create_doris_test_config())
@@ -29,7 +29,7 @@ async fn test_doris_sink_full_integration() -> Result<()> {
 
     // 3. 创建运行时并执行测试
     let runtime = SinkIntegrationRuntime::new(docker_tool, vec![sink_info]);
-    runtime.run(true).await?;
+    runtime_anyhow(runtime.run(true).await)?;
 
     println!("\n✅ Doris 集成测试完成！");
     Ok(())

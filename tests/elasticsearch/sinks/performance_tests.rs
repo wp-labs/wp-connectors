@@ -4,7 +4,7 @@ use anyhow::Result;
 use wp_connectors::elasticsearch::ElasticsearchSinkFactory;
 
 use crate::common::{
-    component_tools::DockerComposeTool,
+    component_tools::{to_anyhow, runtime_anyhow, DockerComposeTool},
     sink::{
         performance_runtime::{SinkPerformanceConfig, SinkPerformanceRuntime},
         sink_info::SinkInfo,
@@ -19,7 +19,7 @@ use crate::elasticsearch_common::{
 #[ignore = "性能测试默认忽略，请按需手动执行"]
 // cargo test --release --package wp-connectors --test elasticsearch_tests --features elasticsearch,external_performance performance_tests::test_elasticsearch_sink_performance -- --exact --nocapture
 async fn test_elasticsearch_sink_performance() -> Result<()> {
-    let docker_tool = DockerComposeTool::new("tests/elasticsearch/component/docker-compose.yml")?;
+    let docker_tool = to_anyhow(DockerComposeTool::new("tests/elasticsearch/component/docker-compose.yml"))?;
 
     let sink_info = SinkInfo::new(ElasticsearchSinkFactory, create_elasticsearch_test_config())
         .with_test_name("baseline")
@@ -32,5 +32,5 @@ async fn test_elasticsearch_sink_performance() -> Result<()> {
         .with_task_count(4);
 
     let runtime = SinkPerformanceRuntime::new(docker_tool, vec![sink_info], config);
-    runtime.run().await
+    runtime_anyhow(runtime.run().await)
 }

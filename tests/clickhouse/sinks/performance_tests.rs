@@ -8,7 +8,7 @@ use crate::clickhouse_common::{
     wait_for_clickhouse_ready,
 };
 use crate::common::{
-    component_tools::DockerComposeTool,
+    component_tools::{to_anyhow, runtime_anyhow, DockerComposeTool},
     sink::{
         performance_runtime::{SinkPerformanceConfig, SinkPerformanceRuntime},
         sink_info::SinkInfo,
@@ -18,7 +18,7 @@ use crate::common::{
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "性能测试默认忽略，请按需手动执行"]
 async fn test_clickhouse_sink_performance() -> Result<()> {
-    let docker_tool = DockerComposeTool::new("tests/clickhouse/component/performance_tests.yml")?;
+    let docker_tool = to_anyhow(DockerComposeTool::new("tests/clickhouse/component/performance_tests.yml"))?;
 
     let sink_info = SinkInfo::new(ClickHouseSinkFactory, create_clickhouse_test_config())
         .with_test_name("baseline")
@@ -31,5 +31,5 @@ async fn test_clickhouse_sink_performance() -> Result<()> {
         .with_task_count(4);
 
     let runtime = SinkPerformanceRuntime::new(docker_tool, vec![sink_info], config);
-    runtime.run().await
+    runtime_anyhow(runtime.run().await)
 }

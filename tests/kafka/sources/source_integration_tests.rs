@@ -6,7 +6,7 @@ use anyhow::Result;
 use wp_connectors::kafka::KafkaSourceFactory;
 
 use crate::common::{
-    component_tools::DockerComposeTool,
+    component_tools::{to_anyhow, runtime_anyhow, DockerComposeTool},
     source::{integration_runtime::SourceIntegrationRuntime, source_info::SourceInfo},
 };
 use crate::kafka_common::{
@@ -17,7 +17,7 @@ use crate::kafka_common::{
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
 async fn test_kafka_source_basic_integration() -> Result<()> {
-    let docker_tool = DockerComposeTool::new("tests/kafka/component/docker-compose.yml")?;
+    let docker_tool = to_anyhow(DockerComposeTool::new("tests/kafka/component/docker-compose.yml"))?;
 
     let params = create_kafka_source_config(unique_kafka_topic("wp_kafka_source_basic"));
     let source_info = SourceInfo::new(KafkaSourceFactory, params.clone())
@@ -43,5 +43,5 @@ async fn test_kafka_source_basic_integration() -> Result<()> {
         .with_poll_interval(Duration::from_millis(100));
 
     let runtime = SourceIntegrationRuntime::new(docker_tool, vec![source_info]);
-    runtime.run(true).await
+    runtime_anyhow(runtime.run(true).await)
 }

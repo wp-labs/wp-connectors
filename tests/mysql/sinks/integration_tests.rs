@@ -4,7 +4,7 @@ use anyhow::Result;
 use wp_connectors::mysql::MySQLSinkFactory;
 
 use crate::common::{
-    component_tools::DockerComposeTool,
+    component_tools::{to_anyhow, runtime_anyhow, DockerComposeTool},
     sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
 };
 use crate::mysql_common::{
@@ -14,7 +14,7 @@ use crate::mysql_common::{
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
 async fn test_mysql_sink_full_integration() -> Result<()> {
-    let docker_tool = DockerComposeTool::new("tests/mysql/component/docker-compose.yml")?;
+    let docker_tool = to_anyhow(DockerComposeTool::new("tests/mysql/component/docker-compose.yml"))?;
 
     let sink_info = SinkInfo::new(MySQLSinkFactory, create_mysql_test_config())
         .with_test_name("basic")
@@ -23,5 +23,5 @@ async fn test_mysql_sink_full_integration() -> Result<()> {
         .with_async_wait_ready(|_params| async { wait_for_mysql_ready().await });
 
     let runtime = SinkIntegrationRuntime::new(docker_tool, vec![sink_info]);
-    runtime.run(true).await
+    runtime_anyhow(runtime.run(true).await)
 }
