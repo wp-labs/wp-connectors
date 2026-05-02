@@ -122,6 +122,7 @@ tokio = { workspace = true }
 bytes = { workspace = true }
 winnow = { workspace = true }
 educe = { workspace = true }
+derive_more = "2"
 sea-orm = { workspace = true }
 sqlx = { workspace = true }
 
