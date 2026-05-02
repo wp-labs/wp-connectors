@@ -1,7 +1,7 @@
 use crate::mysql::config::MysqlConf as MySqlConf;
 use async_trait::async_trait;
-use orion_error::conversion::ToStructError;
 use orion_error::UvsReason;
+use orion_error::conversion::ToStructError;
 use sea_orm::ConnectionTrait;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, Statement};
 use std::collections::VecDeque;

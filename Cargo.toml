@@ -73,6 +73,9 @@ mysql = []
 postgres = []
 count = []
 victorialogs = []
+external_integration = []
+external_performance = []
+full = ["kafka", "mysql", "postgres", "prometheus", "clickhouse", "elasticsearch", "victoriametrics", "victorialogs", "doris", "http"]
 prometheus = [
     "dep:actix-web",
     "dep:prometheus",

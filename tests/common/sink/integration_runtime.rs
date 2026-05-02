@@ -59,7 +59,7 @@ impl<T: ComponentTool + Sync, F: SinkFactory> SinkIntegrationRuntime<T, F> {
             // 2.3 创建 Sink
             println!("创建 Sink...");
             let ctx = SinkBuildCtx::new(PathBuf::from("."));
-            let mut sink = sink_info.factory().build(&spec, &ctx).await?;
+            let mut sink = sink_info.factory().build(&spec, &ctx).await.map_err(|e| anyhow::anyhow!("{e}"))?;
 
             // 2.4 获取发送前的数量
             let count_before = sink_info.count().await?;
@@ -68,7 +68,7 @@ impl<T: ComponentTool + Sync, F: SinkFactory> SinkIntegrationRuntime<T, F> {
             // 2.6 发送数据
             println!("发送 {} 条数据...", TEST_RECORD_COUNT);
             let batch_records = test_records.iter().cloned().map(Arc::new).collect();
-            sink.sink.sink_records(batch_records).await?;
+            sink.sink.sink_records(batch_records).await.map_err(|e| anyhow::anyhow!("{e}"))?;
 
             // 等待数据写入
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -101,13 +101,13 @@ impl<T: ComponentTool + Sync, F: SinkFactory> SinkIntegrationRuntime<T, F> {
 
             // 重新创建 Sink（因为连接可能已断开）
             let ctx = SinkBuildCtx::new(PathBuf::from("."));
-            let mut sink = sink_info.factory().build(&spec, &ctx).await?;
+            let mut sink = sink_info.factory().build(&spec, &ctx).await.map_err(|e| anyhow::anyhow!("{e}"))?;
 
             let retry_test_records = self.create_test_records(TEST_RECORD_COUNT);
             println!("重启后创建了 {} 条测试记录", retry_test_records.len());
 
             let retry_batch_records = retry_test_records.iter().cloned().map(Arc::new).collect();
-            sink.sink.sink_records(retry_batch_records).await?;
+            sink.sink.sink_records(retry_batch_records).await.map_err(|e| anyhow::anyhow!("{e}"))?;
 
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 

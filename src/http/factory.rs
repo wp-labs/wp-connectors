@@ -314,7 +314,9 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("method")));
+        assert!(
+            matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("method"))
+        );
     }
 
     #[test]
@@ -359,7 +361,9 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("timeout_secs")));
+        assert!(
+            matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("timeout_secs"))
+        );
     }
 
     #[test]
@@ -406,7 +410,9 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("compression")));
+        assert!(
+            matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("compression"))
+        );
     }
 
     #[test]

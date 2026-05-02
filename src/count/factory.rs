@@ -153,6 +153,8 @@ mod tests {
         let err = factory
             .validate_spec(&spec)
             .expect_err("zero batch should fail");
-        assert!(matches!(err.reason(), SourceReason::Other(m) if m.contains("count.batch must be > 0")));
+        assert!(
+            matches!(err.reason(), SourceReason::Other(m) if m.contains("count.batch must be > 0"))
+        );
     }
 }

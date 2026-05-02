@@ -125,7 +125,9 @@ mod tests {
         let err = factory
             .validate_spec(&build_spec(BTreeMap::new()))
             .expect_err("missing params should fail");
-        assert!(matches!(err.reason(), SourceReason::Other(m) if m.contains("http.port must be an integer")));
+        assert!(
+            matches!(err.reason(), SourceReason::Other(m) if m.contains("http.port must be an integer"))
+        );
     }
 
     #[test]
@@ -138,7 +140,9 @@ mod tests {
         let err = factory
             .validate_spec(&spec)
             .expect_err("path without slash should fail");
-        assert!(matches!(err.reason(), SourceReason::Other(m) if m.contains("http.path must start with '/")));
+        assert!(
+            matches!(err.reason(), SourceReason::Other(m) if m.contains("http.path must start with '/"))
+        );
     }
 
     #[test]

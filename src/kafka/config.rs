@@ -1,6 +1,6 @@
+use orion_conf::ToStructError;
 use orion_conf::UvsConfFrom;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_conf::ToStructError;
 use serde::{Deserialize, Serialize};
 use wp_conf_base::structure::Validate;
 
