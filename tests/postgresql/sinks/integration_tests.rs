@@ -1,10 +1,10 @@
 #![cfg(all(feature = "postgres", feature = "external_integration"))]
 
-use anyhow::Result;
+
 use wp_connectors::postgres::PostgresSinkFactory;
 
 use crate::common::{
-    component_tools::{to_anyhow, runtime_anyhow, DockerComposeTool},
+    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
     sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
 };
 use crate::postgresql_common::{
@@ -14,8 +14,8 @@ use crate::postgresql_common::{
 
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
-async fn test_postgresql_sink_full_integration() -> Result<()> {
-    let docker_tool = to_anyhow(DockerComposeTool::new("tests/postgresql/component/docker-compose.yml"))?;
+async fn test_postgresql_sink_full_integration() -> RuntimeResult<()> {
+    let docker_tool = DockerComposeTool::new("tests/postgresql/component/docker-compose.yml").into_rt()?;
 
     let sink_info = SinkInfo::new(PostgresSinkFactory, create_postgresql_test_config())
         .with_test_name("basic")
@@ -24,5 +24,5 @@ async fn test_postgresql_sink_full_integration() -> Result<()> {
         .with_async_wait_ready(|_params| async { wait_for_postgresql_ready().await });
 
     let runtime = SinkIntegrationRuntime::new(docker_tool, vec![sink_info]);
-    runtime_anyhow(runtime.run(true).await)
+    runtime.run(true).await
 }

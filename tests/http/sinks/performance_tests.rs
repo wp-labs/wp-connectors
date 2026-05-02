@@ -1,11 +1,11 @@
 #![cfg(all(feature = "http", feature = "external_performance"))]
 
-use anyhow::Result;
+
 use std::time::Duration;
 use wp_connectors::http::HttpSinkFactory;
 
 use crate::common::{
-    component_tools::{to_anyhow, runtime_anyhow, DockerComposeTool},
+    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
     sink::{
         performance_runtime::{SinkPerformanceConfig, SinkPerformanceRuntime},
         sink_info::SinkInfo,
@@ -16,8 +16,8 @@ use crate::http_common::{create_http_performance_scenarios, wait_for_http_nginx_
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "性能测试默认忽略，请按需手动执行"]
 // cargo test --release --package wp-connectors --test http_tests --features http,external_performance performance_tests::test_http_sink_performance -- --exact --nocapture
-async fn test_http_sink_performance() -> Result<()> {
-    let tool = to_anyhow(DockerComposeTool::new("tests/http/component/docker-compose.yml"))?;
+async fn test_http_sink_performance() -> RuntimeResult<()> {
+    let tool = DockerComposeTool::new("tests/http/component/docker-compose.yml").into_rt()?;
 
     let sink_infos = create_http_performance_scenarios()
         .into_iter()
@@ -36,5 +36,5 @@ async fn test_http_sink_performance() -> Result<()> {
         .with_progress_interval(Duration::from_secs(5));
 
     let runtime = SinkPerformanceRuntime::new(tool, sink_infos, config);
-    runtime_anyhow(runtime.run().await)
+    runtime.run().await
 }

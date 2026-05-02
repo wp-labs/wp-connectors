@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use derive_more::From;
+use orion_error::conversion_ext::ConvStructError;
 use orion_error::{OrionError, StructError};
 use serde::Serialize;
 use std::path::Path;
@@ -45,13 +46,11 @@ pub enum RuntimeReason {
 
 pub type RuntimeResult<T> = Result<T, StructError<RuntimeReason>>;
 
-/// Bridging helpers（integration test entry point 向 anyhow 边界用）。
-pub fn to_anyhow<T>(r: ToolResult<T>) -> anyhow::Result<T> {
-    r.map_err(|e| anyhow::anyhow!("{e}"))
+pub trait ToolResultExt<T> {
+    fn into_rt(self) -> RuntimeResult<T>;
 }
-
-pub fn runtime_anyhow<T>(r: RuntimeResult<T>) -> anyhow::Result<T> {
-    r.map_err(|e| anyhow::anyhow!("{e}"))
+impl<T> ToolResultExt<T> for ToolResult<T> {
+    fn into_rt(self) -> RuntimeResult<T> { self.map_err(|e| e.conv()) }
 }
 
 // ── ComponentTool（返回值改为 ToolResult）─────────────────

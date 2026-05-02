@@ -5155,6 +5155,7 @@ dependencies = [
  "bytes",
  "chrono",
  "clickhouse",
+ "derive_more",
  "educe",
  "env_logger",
  "flate2",

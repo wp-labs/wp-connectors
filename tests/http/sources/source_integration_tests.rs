@@ -11,7 +11,7 @@ use wp_connector_api::ParamMap;
 use wp_connectors::http::HttpSourceFactory;
 
 use crate::common::{
-    component_tools::{to_anyhow, runtime_anyhow, ShellScriptRestart, ShellScriptTool},
+    component_tools::{ShellScriptRestart, ShellScriptTool},
     source::{integration_runtime::SourceIntegrationRuntime, source_info::SourceInfo},
 };
 
@@ -85,13 +85,13 @@ struct HttpSourceScenario {
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
 async fn test_http_source_basic_integration() -> Result<()> {
-    let tool = to_anyhow(ShellScriptTool::new_with_options(
+    let tool = ShellScriptTool::new_with_options(
         "tests/http/component/source_noop_start.sh",
         "tests/http/component/source_noop_stop.sh",
         None::<&str>,
         None::<&str>,
         ShellScriptRestart::NoRestart,
-    ))?;
+    ).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let scenarios = vec![
         HttpSourceScenario {
@@ -184,5 +184,6 @@ async fn test_http_source_basic_integration() -> Result<()> {
         .collect();
 
     let runtime = SourceIntegrationRuntime::new(tool, source_infos);
-    runtime_anyhow(runtime.run(true).await)
+    runtime.run(true).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(())
 }

@@ -1,10 +1,10 @@
 #![cfg(all(feature = "doris", feature = "external_performance"))]
 
-use anyhow::Result;
+
 use wp_connectors::doris::DorisSinkFactory;
 
 use crate::common::{
-    component_tools::{to_anyhow, runtime_anyhow, DockerComposeTool},
+    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
     sink::{
         performance_runtime::{SinkPerformanceConfig, SinkPerformanceRuntime},
         sink_info::SinkInfo,
@@ -17,8 +17,8 @@ use crate::doris_common::{
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "性能测试默认忽略，请按需手动执行"]
 // 执行命令: cargo test --release --package wp-connectors --test doris_tests --features doris,external_performance performance_tests::test_doris_sink_performance -- --exact --nocapture
-async fn test_doris_sink_performance() -> Result<()> {
-    let docker_tool = to_anyhow(DockerComposeTool::new("tests/doris/component/performance_tests.yml"))?;
+async fn test_doris_sink_performance() -> RuntimeResult<()> {
+    let docker_tool = DockerComposeTool::new("tests/doris/component/performance_tests.yml").into_rt()?;
     // 添加sink信息、包括sink工厂、测试的初始化方法，基础方法
     let sink_info = SinkInfo::new(DorisSinkFactory, create_doris_test_config())
         .with_test_name("baseline")
@@ -33,6 +33,6 @@ async fn test_doris_sink_performance() -> Result<()> {
         //并行度
         .with_task_count(4);
     let runtime = SinkPerformanceRuntime::new(docker_tool, vec![sink_info], config);
-    runtime_anyhow(runtime.run().await)?;
+    runtime.run().await?;
     Ok(())
 }
