@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Migrate `ComponentTool` trait and implementations (`DockerComposeTool`,
+  `ShellScriptTool`) from `anyhow::Result` to `ToolResult`/`ToolReason`,
+  based on `derive(OrionError)` (#14)
+- Migrate sink integration/performance runtimes from `anyhow::Result` to
+  `RuntimeResult`/`RuntimeReason` with `ToolReason`/`SourceReason`/`SinkReason`
+  union
+- Remove `to_anyhow()`/`runtime_anyhow()` bridge functions; integration test
+  entry points return `RuntimeResult` directly, using `ToolResultExt::into_rt()`
+- Migrate sink constructors (`ClickHouseSink`, `DorisSink`, `HttpSink`,
+  `ElasticsearchSink`, `CountSink`) from `anyhow::Result` to `SinkResult`
+- Migrate `HttpSource::register`/`start`/`ensure_port_runtime` and
+  `decode_body`/`parse_payloads` from `anyhow::Result` to `SourceResult`
+
+### Fixed
+- Add `derive_more` as explicit dependency for test compilation
+
 ## [0.13.2] - 2026-04-30
 
 ### Changed
