@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-05-03
+
 ### Changed
 - Migrate `ComponentTool` trait and implementations (`DockerComposeTool`,
   `ShellScriptTool`) from `anyhow::Result` to `ToolResult`/`ToolReason`,
-  based on `derive(OrionError)` (#14)
+  based on `derive(OrionError)`
 - Migrate sink integration/performance runtimes from `anyhow::Result` to
   `RuntimeResult`/`RuntimeReason` with `ToolReason`/`SourceReason`/`SinkReason`
   union
@@ -20,13 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ElasticsearchSink`, `CountSink`) from `anyhow::Result` to `SinkResult`
 - Migrate `HttpSource::register`/`start`/`ensure_port_runtime` and
   `decode_body`/`parse_payloads` from `anyhow::Result` to `SourceResult`
-
-### Fixed
-- Add `derive_more` as explicit dependency for test compilation
-
-## [0.13.2] - 2026-04-30
-
-### Changed
 - Extract `dmdb` connector into separate `wp-connectors-labs` crate
 - Remove doc examples from `clickhouse`, `elasticsearch`, `http` module docs
 - Fix test assertions for OrionError Display format changes
