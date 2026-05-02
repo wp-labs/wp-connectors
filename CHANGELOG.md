@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fix `ErrorOweBase` and `ToStructError` import paths for orion-error 0.7.2
+- Replace `StructError::into()` with explicit `anyhow` conversion in Kafka
+  source `create_topics()` to fix missing `StdError` impl
+
 ## [0.12.0] - 2026-04-11
 
 ### Changed

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use orion_error::ErrorOweBase;
+use orion_error::compat_traits::ErrorOweBase;
 use rdkafka_wrap::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka_wrap::client::DefaultClientContext;
 use rdkafka_wrap::config::RDKafkaLogLevel;
@@ -100,11 +100,11 @@ async fn create_topics(config: &KafkaSourceConf) -> AnyResult<()> {
                         wp_log::warn_data!("[kafka] topic {} already exists, continuing", name);
                         continue;
                     }
-                    return Err(SourceError::from(SourceReason::SupplierError(format!(
+                    let err = SourceError::from(SourceReason::SupplierError(format!(
                         "Failed to create Kafka topic {} with error: {}",
                         name, code
-                    )))
-                    .into());
+                    )));
+                    return Err(anyhow::anyhow!("{err}"));
                 }
             }
         }

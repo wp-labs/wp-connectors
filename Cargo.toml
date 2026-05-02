@@ -13,19 +13,19 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
 # WP Core Dependencies - 使用模板变量
-wp-connector-api = "0.8"
-wp-parse-api =  "0.8"
+wp-connector-api = "0.9"
+wp-parse-api =  "0.9"
 wp-model-core = "0.8"
-wp-log =  "0.2"
-wp-error =  "0.8"
-wp-specs =  "0.8"
-wp-conf-base = "0.2"
-wp-data-fmt = "0.2.4"
+wp-log =  "0.3"
+wp-error =  "0.9"
+wp-specs =  "0.9"
+wp-conf-base = "0.3"
+wp-data-fmt = "0.2"
 
 orion_exp = "0.1"
 # Orion Dependencies
-orion-error = "0.6"
-orion_conf = { version = "0.5", features = ["yaml", "toml"] }
+orion-error = "0.7"
+orion_conf = { version = "0.6", features = ["yaml", "toml"] }
 
 # Core Runtime Dependencies
 async-trait = "0.1"
