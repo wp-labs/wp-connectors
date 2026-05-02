@@ -329,8 +329,7 @@ mod tests {
             .validate_spec(&spec)
             .expect_err("missing cursor_column should fail");
         assert!(
-            err.to_string()
-                .contains("postgres.cursor_column must not be empty")
+            matches!(err.reason(), SourceReason::Other(m) if m.contains("postgres.cursor_column must not be empty"))
         );
     }
 
@@ -380,8 +379,7 @@ mod tests {
             .validate_spec(&spec)
             .expect_err("start_from_format without start_from should fail");
         assert!(
-            err.to_string()
-                .contains("postgres.start_from_format requires postgres.start_from")
+            matches!(err.reason(), SourceReason::Other(m) if m.contains("postgres.start_from_format requires postgres.start_from"))
         );
     }
 
@@ -401,8 +399,7 @@ mod tests {
             .validate_spec(&spec)
             .expect_err("int cursor should reject start_from_format");
         assert!(
-            err.to_string()
-                .contains("postgres.start_from_format is only supported for time cursor")
+            matches!(err.reason(), SourceReason::Other(m) if m.contains("postgres.start_from_format is only supported for time cursor"))
         );
     }
 }

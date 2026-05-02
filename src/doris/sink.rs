@@ -796,7 +796,7 @@ mod tests {
             .sink_records(vec![Arc::new(sample_record())])
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("partially failed"));
+        assert!(matches!(err.reason(), SinkReason::Sink(m) if m.contains("partially failed")));
         filtered_mock.assert_calls_async(1).await;
     }
 }

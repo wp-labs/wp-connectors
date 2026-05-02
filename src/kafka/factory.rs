@@ -401,8 +401,7 @@ mod tests {
         let spec = build_source_spec(params);
 
         let err = build_kafka_conf_from_spec(&spec).expect_err("topic missing");
-        let msg = format!("{err}");
-        assert!(msg.contains("kafka.topic"));
+        assert!(matches!(err.reason(), SourceReason::Other(m) if m.contains("kafka.topic")));
     }
 
     #[test]
@@ -464,8 +463,7 @@ mod tests {
         let spec = build_sink_spec(params);
 
         let err = build_kafka_sink_conf_from_spec(&spec).expect_err("invalid fmt");
-        let msg = format!("{err}");
-        assert!(msg.contains("invalid fmt"));
+        assert!(matches!(err.reason(), SinkReason::Sink(m) if m.contains("invalid fmt")));
     }
 
     #[test]

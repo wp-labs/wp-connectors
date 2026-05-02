@@ -902,8 +902,7 @@ mod tests {
 
         let err = result.unwrap_err();
         assert!(
-            err.to_string()
-                .contains("unsupported compression algorithm")
+            matches!(err.reason(), SinkReason::Sink(m) if m.contains("unsupported compression algorithm"))
         );
     }
 

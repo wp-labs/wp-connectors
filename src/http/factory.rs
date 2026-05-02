@@ -280,10 +280,7 @@ mod tests {
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("http or https protocol")
+            matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("http or https protocol"))
         );
     }
 
@@ -317,7 +314,7 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("method"));
+        assert!(matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("method")));
     }
 
     #[test]
@@ -362,7 +359,7 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("timeout_secs"));
+        assert!(matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("timeout_secs")));
     }
 
     #[test]
@@ -382,7 +379,7 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("fmt"));
+        assert!(matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("fmt")));
     }
 
     #[test]
@@ -409,7 +406,7 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("compression"));
+        assert!(matches!(result.unwrap_err().reason(), SinkReason::Sink(m) if m.contains("compression")));
     }
 
     #[test]
