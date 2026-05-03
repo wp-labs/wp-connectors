@@ -3,9 +3,9 @@
 
 use wp_connectors::mysql::MySQLSinkFactory;
 
-use crate::common::{
-    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
+    SinkIntegrationRuntime, SinkInfo,
 };
 use crate::mysql_common::{
     create_mysql_test_config, init_mysql_database, query_table_count, wait_for_mysql_ready,

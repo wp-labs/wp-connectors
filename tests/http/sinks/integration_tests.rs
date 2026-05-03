@@ -2,9 +2,9 @@
 
 use wp_connectors::http::HttpSinkFactory;
 
-use crate::common::{
-    component_tools::{RuntimeResult, ShellScriptRestart, ShellScriptTool, ToolResultExt},
-    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{RuntimeResult, ShellScriptRestart, ShellScriptTool, ToolResultExt},
+    SinkIntegrationRuntime, SinkInfo,
 };
 use crate::http_common::{
     create_http_integration_scenarios, query_http_count, wait_for_http_ready,

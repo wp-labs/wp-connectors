@@ -5,9 +5,9 @@ use std::time::Duration;
 
 use wp_connectors::kafka::KafkaSourceFactory;
 
-use crate::common::{
-    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    source::{integration_runtime::SourceIntegrationRuntime, source_info::SourceInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
+    SourceIntegrationRuntime, SourceInfo,
 };
 use crate::kafka_common::{
     create_kafka_source_config, init_kafka_topic_with_params, produce_topic_messages,

@@ -5144,6 +5144,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "wp-connector-test-utils"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "derive_more",
+ "orion-error",
+ "rand 0.10.1",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tokio",
+ "wp-connector-api",
+ "wp-model-core",
+]
+
+[[package]]
 name = "wp-connectors"
 version = "0.13.2"
 dependencies = [
@@ -5183,6 +5201,7 @@ dependencies = [
  "winnow",
  "wp-conf-base",
  "wp-connector-api",
+ "wp-connector-test-utils",
  "wp-data-fmt",
  "wp-error",
  "wp-log",

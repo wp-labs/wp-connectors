@@ -10,9 +10,9 @@ use serde_json::{Value, json};
 use wp_connector_api::ParamMap;
 use wp_connectors::http::HttpSourceFactory;
 
-use crate::common::{
-    component_tools::{ShellScriptRestart, ShellScriptTool},
-    source::{integration_runtime::SourceIntegrationRuntime, source_info::SourceInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{ShellScriptRestart, ShellScriptTool},
+    SourceIntegrationRuntime, SourceInfo,
 };
 
 fn free_port() -> Result<u16> {

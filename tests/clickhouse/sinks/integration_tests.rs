@@ -7,9 +7,9 @@ use crate::clickhouse_common::{
     create_clickhouse_test_config, init_clickhouse_database, query_table_count,
     wait_for_clickhouse_ready,
 };
-use crate::common::{
-    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
+    SinkIntegrationRuntime, SinkInfo,
 };
 
 #[tokio::test]

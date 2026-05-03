@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use wp_connectors::kafka::KafkaSinkFactory;
 
-use crate::common::{
-    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
     sink::{
         performance_runtime::{SinkPerformanceConfig, SinkPerformanceRuntime},
         sink_info::SinkInfo,

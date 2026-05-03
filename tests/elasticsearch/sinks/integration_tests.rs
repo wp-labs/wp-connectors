@@ -3,9 +3,9 @@
 
 use wp_connectors::elasticsearch::ElasticsearchSinkFactory;
 
-use crate::common::{
-    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
+    SinkIntegrationRuntime, SinkInfo,
 };
 use crate::elasticsearch_common::{
     create_elasticsearch_test_config, init_elasticsearch_index, query_index_count,

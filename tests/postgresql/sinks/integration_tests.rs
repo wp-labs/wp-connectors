@@ -3,9 +3,9 @@
 
 use wp_connectors::postgres::PostgresSinkFactory;
 
-use crate::common::{
-    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
+    SinkIntegrationRuntime, SinkInfo,
 };
 use crate::postgresql_common::{
     create_postgresql_test_config, init_postgresql_database, query_table_count,

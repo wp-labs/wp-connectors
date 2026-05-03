@@ -3,9 +3,9 @@
 
 use wp_connectors::kafka::KafkaSinkFactory;
 
-use crate::common::{
-    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
+    SinkIntegrationRuntime, SinkInfo,
 };
 use crate::kafka_common::{
     create_kafka_test_scenarios, init_kafka_topic_with_params, query_topic_count,

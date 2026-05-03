@@ -3,9 +3,9 @@
 
 use wp_connectors::victorialogs::VictoriaLogSinkFactory;
 
-use crate::common::{
-    component_tools::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
+    SinkIntegrationRuntime, SinkInfo,
 };
 use crate::victorialogs_common::{
     create_vlogs_test_config, init_vlogs_state, query_vlogs_count, wait_for_vlogs_ready,
