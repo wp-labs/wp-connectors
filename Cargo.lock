@@ -5145,7 +5145,8 @@ dependencies = [
 
 [[package]]
 name = "wp-connector-test-utils"
-version = "0.1.0"
+version = "0.1.1"
+source = "git+https://github.com/wp-labs/wp-connector-test-utils.git#9dfc8363e5d09af2725253a9bdd90e4e5ba92125"
 dependencies = [
  "anyhow",
  "async-trait",
