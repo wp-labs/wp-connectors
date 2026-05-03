@@ -60,10 +60,10 @@ impl VictoriaLogSink {
         value_map.insert("_msg".to_string(), formatted_msg);
         value_map.insert("_time".to_string(), timestamp);
         serde_json::to_string(&value_map).map_err(|e| {
-            SinkError::from(SinkReason::Sink(format!(
+            SinkReason::sink(format!(
                 "build jsonline for victorialogs flush fail: {}",
                 e
-            )))
+            ))
         })
     }
 
@@ -92,10 +92,10 @@ impl VictoriaLogSink {
                 Err(e) => {
                     error_data!("reqwest send error, text: {:?}", e);
                     if !(e.is_timeout() || e.is_connect()) {
-                        return Err(SinkError::from(SinkReason::Sink(format!(
+                        return Err(SinkReason::sink(format!(
                             "reqwest send fail: {}",
                             e
-                        ))));
+                        )));
                     }
                 }
             }

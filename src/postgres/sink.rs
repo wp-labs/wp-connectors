@@ -65,7 +65,7 @@ impl AsyncCtrl for PostgresSink {
     }
     async fn reconnect(&mut self) -> SinkResult<()> {
         self.db.ping().await.map_err(|e| {
-            SinkError::from(SinkReason::Sink(format!("reconnect postgres fail: {}", e)))
+            SinkReason::sink(format!("reconnect postgres fail: {}", e))
         })?;
         Ok(())
     }
@@ -87,10 +87,10 @@ impl AsyncRecordSink for PostgresSink {
             let mut sql = self.base_insert_prefix();
             sql.push_str(&raws.join(","));
             if let Err(e) = self.db.execute_unprepared(sql.as_str()).await {
-                return Err(SinkError::from(SinkReason::Sink(format!(
+                return Err(SinkReason::sink(format!(
                     "postgres exec cloumns:{:?}, fail: {}, sql: {}",
                     self.cloumn_name, e, sql
-                ))));
+                )));
             }
         }
         Ok(())

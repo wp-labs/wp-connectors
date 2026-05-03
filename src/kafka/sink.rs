@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use orion_error::compat_traits::ErrorOweBase;
+use orion_error::conversion::{SourceErr, SourceRawErr, ToStructError};
 use rdkafka_wrap::{KWProducer, KWProducerConf, OptionExt};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -22,13 +22,13 @@ impl AsyncCtrl for KafkaSink {
     async fn stop(&mut self) -> SinkResult<()> {
         self.inner
             .flush(rdkafka_wrap::util::Timeout::After(Duration::from_secs(3)))
-            .owe(SinkReason::Sink("kafka stop fail".into()))?;
+            .source_raw_err(SinkReason::Sink, "kafka stop fail")?;
         Ok(())
     }
     async fn reconnect(&mut self) -> SinkResult<()> {
         let conf = self.inner.conf.clone();
         self.inner =
-            Arc::new(KWProducer::new(conf).owe(SinkReason::Sink("kafka  reconnect fail".into()))?);
+            Arc::new(KWProducer::new(conf).source_raw_err(SinkReason::Sink, "kafka  reconnect fail")?);
         Ok(())
     }
 }
@@ -39,14 +39,14 @@ impl AsyncRawDataSink for KafkaSink {
         self.inner
             .publish(data.as_bytes(), Default::default())
             .await
-            .owe(SinkReason::Sink("kafka send fail".into()))?;
+            .source_raw_err(SinkReason::Sink, "kafka send fail")?;
         Ok(())
     }
     async fn sink_bytes(&mut self, data: &[u8]) -> SinkResult<()> {
         self.inner
             .publish(data, Default::default())
             .await
-            .owe(SinkReason::Sink("kafka send fail".into()))?;
+            .source_raw_err(SinkReason::Sink, "kafka send fail")?;
         Ok(())
     }
 
@@ -74,7 +74,7 @@ impl AsyncRecordSink for KafkaSink {
         self.inner
             .publish(line.as_bytes(), Default::default())
             .await
-            .owe(SinkReason::Sink("kafka send fail".into()))?;
+            .source_raw_err(SinkReason::Sink, "kafka send fail")?;
         Ok(())
     }
     async fn sink_records(&mut self, data: Vec<Arc<DataRecord>>) -> SinkResult<()> {

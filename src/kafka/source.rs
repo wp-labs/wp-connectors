@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use orion_error::compat_traits::ErrorOweBase;
+use orion_error::conversion::{SourceErr, SourceRawErr, ToStructError};
 use rdkafka_wrap::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka_wrap::client::DefaultClientContext;
 use rdkafka_wrap::config::RDKafkaLogLevel;
@@ -76,7 +76,7 @@ impl KafkaSource {
                 )]
             })
             .map_err(KafkaErrorWrapper)
-            .owe(SourceReason::SupplierError("kafka".to_string()))
+            .source_raw_err(SourceReason::SupplierError, "kafka".to_string())
     }
 }
 
@@ -100,10 +100,10 @@ async fn create_topics(config: &KafkaSourceConf) -> AnyResult<()> {
                         wp_log::warn_data!("[kafka] topic {} already exists, continuing", name);
                         continue;
                     }
-                    let err = SourceError::from(SourceReason::SupplierError(format!(
+                    let err = SourceReason::supplier_error(format!(
                         "Failed to create Kafka topic {} with error: {}",
                         name, code
-                    )));
+                    ));
                     return Err(anyhow::anyhow!("{err}"));
                 }
             }
@@ -112,7 +112,7 @@ async fn create_topics(config: &KafkaSourceConf) -> AnyResult<()> {
     Ok(())
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct KafkaErrorWrapper(pub KafkaError);
 
 impl Display for KafkaErrorWrapper {
@@ -126,7 +126,7 @@ impl From<KafkaErrorWrapper> for SourceReason {
         if value.0 == KafkaError::NoMessageReceived {
             return SourceReason::NotData;
         }
-        SourceReason::SupplierError(value.0.to_string())
+        SourceReason::SupplierError
     }
 }
 

@@ -153,9 +153,9 @@ impl HttpSourceRuntime {
         let port_runtime = self.ensure_port_runtime(port).await?;
         let mut routes = port_runtime.routes.write().await;
         if routes.contains_key(&path) {
-            return Err(SourceError::from(SourceReason::Other(format!(
+            return Err(SourceReason::other(format!(
                 "http source already exists for {port}{path}"
-            ))));
+            )));
         }
         routes.insert(path, RouteTarget { sender });
         Ok(())
@@ -227,7 +227,7 @@ impl PortRuntime {
         })
         .workers(1)
         .bind(("0.0.0.0", self.port))
-        .map_err(|e| SourceError::from(SourceReason::Other(format!("bind port {}: {e}", self.port))))?
+        .map_err(|e| SourceReason::other(format!("bind port {}: {e}", self.port)))?
         .run();
 
         let handle = server.handle();
@@ -393,7 +393,7 @@ fn decode_body(body: web::Bytes, compression: CompressionKind) -> SourceResult<B
             let mut decoded = Vec::new();
             decoder
                 .read_to_end(&mut decoded)
-                .map_err(|e| SourceError::from(SourceReason::SupplierError(format!("gzip decompression failed: {e}"))))?;
+                .map_err(|e| SourceReason::supplier_error(format!("gzip decompression failed: {e}")))?;
             Ok(Bytes::from(decoded))
         }
     }
@@ -407,14 +407,14 @@ fn parse_payloads(body: &[u8], fmt: &str) -> SourceResult<Vec<Bytes>> {
     match fmt {
         "json" => parse_json_payloads(body),
         "ndjson" => parse_ndjson_payloads(body),
-        _ => Err(SourceError::from(SourceReason::Other(format!("unsupported fmt: {fmt}")))),
+        _ => Err(SourceReason::other(format!("unsupported fmt: {fmt}"))),
     }
 }
 
 fn parse_json_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
     let value: Value = serde_json::from_slice(body).map_err(|e| {
         let msg = format!("invalid json payload: {e}");
-        SourceError::from(SourceReason::SupplierError(msg.clone())).with_detail(msg)
+        SourceReason::supplier_error(msg.clone()).with_detail(msg)
     })?;
     let values = match value {
         Value::Array(values) => values,
@@ -426,7 +426,7 @@ fn parse_json_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
         .map(|value| {
             serde_json::to_vec(&value)
                 .map(Bytes::from)
-                .map_err(|e| SourceError::from(SourceReason::SupplierError(format!("json serialize: {e}"))))
+                .map_err(|e| SourceReason::supplier_error(format!("json serialize: {e}")))
         })
         .collect()
 }
@@ -434,7 +434,7 @@ fn parse_json_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
 fn parse_ndjson_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
     let text = std::str::from_utf8(body).map_err(|e| {
         let msg = format!("ndjson invalid utf-8: {e}");
-        SourceError::from(SourceReason::SupplierError(msg.clone())).with_detail(msg)
+        SourceReason::supplier_error(msg.clone()).with_detail(msg)
     })?;
     let mut lines = Vec::new();
 
@@ -445,11 +445,11 @@ fn parse_ndjson_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
         }
         let value: Value = serde_json::from_str(line).map_err(|e| {
             let msg = format!("invalid ndjson line {}: {e}", idx + 1);
-            SourceError::from(SourceReason::SupplierError(msg.clone())).with_detail(msg)
+            SourceReason::supplier_error(msg.clone()).with_detail(msg)
         })?;
         lines.push(Bytes::from(
             serde_json::to_vec(&value)
-                .map_err(|e| SourceError::from(SourceReason::SupplierError(format!("ndjson serialize line {}: {e}", idx + 1))))?
+                .map_err(|e| SourceReason::supplier_error(format!("ndjson serialize line {}: {e}", idx + 1)))?
         ));
     }
 

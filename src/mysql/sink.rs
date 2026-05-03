@@ -65,7 +65,7 @@ impl AsyncCtrl for MysqlSink {
     }
     async fn reconnect(&mut self) -> SinkResult<()> {
         self.db.ping().await.map_err(|e| {
-            SinkError::from(SinkReason::Sink(format!("reconnect mysql fail: {}", e)))
+            SinkReason::sink(format!("reconnect mysql fail: {}", e))
         })?;
         Ok(())
     }
@@ -87,10 +87,10 @@ impl AsyncRecordSink for MysqlSink {
             let mut sql = self.base_insert_prefix();
             sql.push_str(&raws.join(","));
             if let Err(e) = self.db.execute_unprepared(sql.as_str()).await {
-                return Err(SinkError::from(SinkReason::Sink(format!(
+                return Err(SinkReason::sink(format!(
                     "mysql exec cloumns:{:?}, fail: {}, sql: {}",
                     self.cloumn_name, e, sql
-                ))));
+                )));
             }
         }
         Ok(())

@@ -636,7 +636,7 @@ impl AsyncRawDataSink for HttpSink {
 /// Helper function to create a SinkError
 #[allow(dead_code)] // Will be used in later tasks
 fn sink_error(msg: impl Into<String>) -> SinkError {
-    SinkError::from(SinkReason::Sink(msg.into()))
+    SinkReason::sink(msg)
 }
 
 #[cfg(test)]

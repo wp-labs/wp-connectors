@@ -1,7 +1,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use orion_conf::StructError;
+
 use prometheus::{Encoder, TextEncoder};
 use std::sync::Arc;
 use sysinfo::System;
@@ -132,7 +132,7 @@ impl VictoriaMetricExporter {
         let mut buffer = Vec::new();
         if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
             return Err(
-                StructError::from(SinkReason::Sink("prometheus encode error".to_string()))
+                SinkReason::sink("prometheus encode error")
                     .with_detail(e.to_string()),
             );
         }
@@ -146,7 +146,7 @@ impl VictoriaMetricExporter {
         // let buffer = append_timestamp_to_each_sample(&buffer, ts);
         let url = format!("{}?time_stamp={}", write_url, ts);
         let response = client.post(&url).body(buffer).send().await.map_err(|e| {
-            StructError::from(SinkReason::Sink("reqwest send error".to_string()))
+            SinkReason::sink("reqwest send error")
                 .with_detail(e.to_string())
         })?;
 
@@ -154,10 +154,10 @@ impl VictoriaMetricExporter {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             info_data!("VictoriaMetrics API error: {} - {}", status, body);
-            return Err(StructError::from(SinkReason::Sink(format!(
+            return Err(SinkReason::sink(format!(
                 "VictoriaMetrics API error: {} - {}",
                 status, body
-            ))));
+            )));
         }
         Ok(())
     }

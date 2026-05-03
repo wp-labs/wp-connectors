@@ -13,8 +13,8 @@ impl ConnectorKindAdapter for DevPostgresAdapter {
     fn kind(&self) -> &'static str {
         "postgres"
     }
-    fn url_to_params(&self, url: &str) -> anyhow::Result<ParamMap> {
-        let cfg = PostgresConf::from_url(url)?;
+    fn url_to_params(&self, url: &str) -> Result<ParamMap, String> {
+        let cfg = PostgresConf::from_url(url).map_err(|e| e.to_string())?;
         // Convert to ParamMap (serde_json values)
         let mut m: ParamMap = BTreeMap::new();
         m.insert("endpoint".into(), serde_json::Value::String(cfg.endpoint));

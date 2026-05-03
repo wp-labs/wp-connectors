@@ -30,7 +30,7 @@ impl wp_connector_api::SourceFactory for MySQLSourceFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if endpoint.trim().is_empty() {
-            return Err(SourceReason::Other("mysql.endpoint must not be empty".into()).into());
+            return Err(SourceReason::other("mysql.endpoint must not be empty".into()).into());
         }
 
         let database = spec
@@ -39,7 +39,7 @@ impl wp_connector_api::SourceFactory for MySQLSourceFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if database.trim().is_empty() {
-            return Err(SourceReason::Other("mysql.database must not be empty".into()).into());
+            return Err(SourceReason::other("mysql.database must not be empty".into()).into());
         }
 
         Ok(())
@@ -78,7 +78,7 @@ impl wp_connector_api::SourceFactory for MySQLSourceFactory {
         meta_tags.set(WP_SRC_VAL, "mysql");
         let source = MysqlSource::new(spec.name.clone(), meta_tags.clone(), &conf)
             .await
-            .map_err(|err| SourceReason::Other(err.to_string()))?;
+            .map_err(|err| SourceReason::other(err))?;
 
         let mut meta = SourceMeta::new(spec.name.clone(), spec.kind.clone());
         meta.tags = meta_tags;

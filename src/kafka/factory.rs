@@ -57,11 +57,11 @@ fn parse_required_string(value: Option<&Value>, field: &str) -> SourceResult<Str
     if let Some(Value::String(raw)) = value {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
-            return Err(SourceReason::Other(format!("{field} must not be empty")).into());
+            return Err(SourceReason::other(format!("{field} must not be empty")).into());
         }
         return Ok(trimmed.to_string());
     }
-    Err(SourceReason::Other(format!("{field} must not be empty")).into())
+    Err(SourceReason::other(format!("{field} must not be empty")).into())
 }
 
 fn parse_topics(value: Option<&Value>) -> SourceResult<Vec<String>> {
@@ -74,7 +74,7 @@ fn parse_topics(value: Option<&Value>) -> SourceResult<Vec<String>> {
                 .map(|topic| topic.to_string())
                 .collect::<Vec<_>>();
             if topics.is_empty() {
-                return Err(SourceReason::Other("kafka.topic must not be empty".into()).into());
+                return Err(SourceReason::other("kafka.topic must not be empty".into()).into());
             }
             Ok(topics)
         }
@@ -93,7 +93,7 @@ fn parse_topics(value: Option<&Value>) -> SourceResult<Vec<String>> {
                 topics.push(trimmed.to_string());
             }
             if topics.is_empty() {
-                return Err(SourceReason::Other("kafka.topic must not be empty".into()).into());
+                return Err(SourceReason::other("kafka.topic must not be empty".into()).into());
             }
             Ok(topics)
         }
@@ -246,7 +246,7 @@ impl wp_connector_api::SourceFactory for KafkaSourceFactory {
         meta_tags.set(WP_SRC_VAL, access_source);
         let source = KafkaSource::new(spec.name.clone(), meta_tags.clone(), &group_id, &conf)
             .await
-            .map_err(|err| SourceReason::Other(err.to_string()))?;
+            .map_err(|err| SourceReason::other(err))?;
 
         let mut meta = SourceMeta::new(spec.name.clone(), spec.kind.clone());
         meta.tags = meta_tags;

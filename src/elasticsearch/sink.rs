@@ -312,5 +312,5 @@ impl AsyncRawDataSink for ElasticsearchSink {
 
 /// 统一封装 sink 层错误
 fn sink_error(msg: impl Into<String>) -> SinkError {
-    SinkError::from(SinkReason::Sink(msg.into()))
+    SinkReason::sink(msg)
 }

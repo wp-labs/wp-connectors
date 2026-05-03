@@ -91,7 +91,7 @@ struct CountSourceConfig {
 fn build_count_source_config(spec: &SourceSpec) -> SourceResult<CountSourceConfig> {
     let batch_size = parse_u64_param(spec, "batch")?.unwrap_or(1) as usize;
     if batch_size == 0 {
-        return Err(SourceReason::Other("count.batch must be > 0".into()).into());
+        return Err(SourceReason::other("count.batch must be > 0".into()).into());
     }
 
     let total = parse_u64_param(spec, "total")?;
@@ -110,7 +110,7 @@ fn parse_u64_param(spec: &SourceSpec, key: &str) -> SourceResult<Option<u64>> {
         Some(Value::Number(number)) => number.as_u64().map(Some).ok_or_else(|| {
             SourceReason::Other(format!("count.{key} must be a non-negative integer")).into()
         }),
-        Some(_) => Err(SourceReason::Other(format!("count.{key} must be an integer")).into()),
+        Some(_) => Err(SourceReason::other(format!("count.{key} must be an integer")).into()),
     }
 }
 

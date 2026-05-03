@@ -34,7 +34,7 @@ impl SourceFactory for PostgresSourceFactory {
         meta_tags.set(WP_SRC_VAL, "postgres");
         let source = PostgresSource::new(spec.name.clone(), meta_tags.clone(), &conf)
             .await
-            .map_err(|err| SourceReason::Other(err.to_string()))?;
+            .map_err(|err| SourceReason::other(err))?;
 
         let mut meta = SourceMeta::new(spec.name.clone(), spec.kind.clone());
         meta.tags = meta_tags;
@@ -205,42 +205,42 @@ fn build_base_postgres_conf_from_params(params: &ParamMap) -> Result<PostgresCon
 }
 
 fn build_postgres_source_conf(spec: &SourceSpec) -> SourceResult<PostgresConf> {
-    let conf = build_base_postgres_conf_from_params(&spec.params).map_err(SourceReason::Other)?;
+    let conf = build_base_postgres_conf_from_params(&spec.params).map_err(|e| SourceReason::other(e))?;
     validate_postgres_source_conf(&conf)?;
     Ok(conf)
 }
 
 fn validate_postgres_source_conf(conf: &PostgresConf) -> SourceResult<()> {
     if conf.endpoint.trim().is_empty() {
-        return Err(SourceReason::Other("postgres.endpoint must not be empty".into()).into());
+        return Err(SourceReason::other("postgres.endpoint must not be empty".into()).into());
     }
     if conf.database.trim().is_empty() {
-        return Err(SourceReason::Other("postgres.database must not be empty".into()).into());
+        return Err(SourceReason::other("postgres.database must not be empty".into()).into());
     }
     if conf.schema.trim().is_empty() {
-        return Err(SourceReason::Other("postgres.schema must not be empty".into()).into());
+        return Err(SourceReason::other("postgres.schema must not be empty".into()).into());
     }
     let table = conf.table.as_deref().unwrap_or("").trim();
     if table.is_empty() {
-        return Err(SourceReason::Other("postgres.table must not be empty".into()).into());
+        return Err(SourceReason::other("postgres.table must not be empty".into()).into());
     }
     let cursor_column = conf.cursor_column.as_deref().unwrap_or("").trim();
     if cursor_column.is_empty() {
-        return Err(SourceReason::Other("postgres.cursor_column must not be empty".into()).into());
+        return Err(SourceReason::other("postgres.cursor_column must not be empty".into()).into());
     }
 
     let batch = conf.batch.unwrap_or(5000);
     if batch == 0 {
-        return Err(SourceReason::Other("postgres.batch must be > 0".into()).into());
+        return Err(SourceReason::other("postgres.batch must be > 0".into()).into());
     }
 
     let poll_interval_ms = conf.poll_interval_ms.unwrap_or(1000);
     if poll_interval_ms < 100 {
-        return Err(SourceReason::Other("postgres.poll_interval_ms must be >= 100".into()).into());
+        return Err(SourceReason::other("postgres.poll_interval_ms must be >= 100".into()).into());
     }
     let error_backoff_ms = conf.error_backoff_ms.unwrap_or(2000);
     if error_backoff_ms < 200 {
-        return Err(SourceReason::Other("postgres.error_backoff_ms must be >= 200".into()).into());
+        return Err(SourceReason::other("postgres.error_backoff_ms must be >= 200".into()).into());
     }
 
     validate_source_cursor_type_and_start_from(
@@ -248,7 +248,7 @@ fn validate_postgres_source_conf(conf: &PostgresConf) -> SourceResult<()> {
         conf.start_from.as_deref(),
         conf.start_from_format.as_deref(),
     )
-    .map_err(|err| SourceReason::Other(err.to_string()))?;
+    .map_err(|err| SourceReason::other(err))?;
 
     Ok(())
 }
@@ -299,7 +299,7 @@ fn parse_columns(value: Option<&Value>) -> SinkResult<Vec<String>> {
 fn parse_non_negative_u64(value: &Value, field: &str) -> Result<u64, SourceReason> {
     value
         .as_u64()
-        .ok_or_else(|| SourceReason::Other(format!("{field} must be a non-negative integer")))
+        .ok_or_else(|| SourceReason::other(format!("{field} must be a non-negative integer")))
 }
 
 #[cfg(test)]

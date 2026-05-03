@@ -69,10 +69,10 @@ fn required_port(spec: &SourceSpec, key: &str) -> SourceResult<u16> {
         .params
         .get(key)
         .and_then(Value::as_u64)
-        .ok_or_else(|| SourceReason::Other(format!("http.{key} must be an integer")))?;
+        .ok_or_else(|| SourceReason::other(format!("http.{key} must be an integer")))?;
 
     if port == 0 || port > u16::MAX as u64 {
-        return Err(SourceReason::Other(format!("http.{key} must be in 1..=65535")).into());
+        return Err(SourceReason::other(format!("http.{key} must be in 1..=65535")));
     }
 
     Ok(port as u16)
@@ -86,10 +86,10 @@ fn required_path(spec: &SourceSpec, key: &str) -> SourceResult<String> {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|path| !path.is_empty())
-        .ok_or_else(|| SourceReason::Other(format!("http.{key} must not be empty")))?;
+        .ok_or_else(|| SourceReason::other(format!("http.{key} must not be empty")))?;
 
     if !path.starts_with('/') {
-        return Err(SourceReason::Other(format!("http.{key} must start with '/'")).into());
+        return Err(SourceReason::other(format!("http.{key} must start with '/'")).into());
     }
 
     Ok(path.to_string())

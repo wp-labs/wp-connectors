@@ -1,6 +1,6 @@
 use crate::mysql::config::MysqlConf as MySqlConf;
 use async_trait::async_trait;
-use orion_error::UvsReason;
+use orion_error::reason::UnifiedReason;
 use orion_error::conversion::ToStructError;
 use sea_orm::ConnectionTrait;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, Statement};
@@ -117,7 +117,7 @@ impl MysqlSource {
             ))
             .await
             .map_err(|e| {
-                SourceReason::Uvs(UvsReason::data_error())
+                SourceReason::Uvs(UnifiedReason::data_error())
                     .to_err()
                     .with_detail(e.to_string())
             })?;
@@ -129,7 +129,7 @@ impl MysqlSource {
         // 填充缓存
         for row in rows {
             let json_str: String = row.try_get_by_index(0).map_err(|e| {
-                SourceReason::Uvs(UvsReason::data_error())
+                SourceReason::Uvs(UnifiedReason::data_error())
                     .to_err()
                     .with_detail(e.to_string())
             })?;

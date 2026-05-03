@@ -410,7 +410,7 @@ impl AsyncRawDataSink for DorisSink {
 
 /// 统一封装 sink 层错误。
 fn sink_error(msg: impl Into<String>) -> SinkError {
-    SinkError::from(SinkReason::Sink(msg.into()))
+    SinkReason::sink(msg)
 }
 
 fn fingerprint_bytes(bytes: &[u8]) -> (u64, u64) {
