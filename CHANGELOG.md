@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-05-03
+
+### Changed
+- Extract test infrastructure to `wp-connector-test-utils` crate
+
 ## [0.13.2] - 2026-05-03
 
 ### Changed
@@ -134,7 +139,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.13.2...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.13.3...HEAD
+[0.13.3]: https://github.com/wp-labs/wp-connectors/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/wp-labs/wp-connectors/compare/v0.12.0...v0.13.2
 [0.12.0]: https://github.com/wp-labs/wp-connectors/compare/v0.10.0...v0.12.0
 [0.10.0]: https://github.com/wp-labs/wp-connectors/compare/v0.7.8...v0.10.0
