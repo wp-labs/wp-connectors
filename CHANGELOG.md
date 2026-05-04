@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Adapt connector error handling for `wp-connector-api` `0.10.1` unit `SinkReason`/`SourceReason` variants.
 - Store connector error messages on `StructError.detail` instead of reason variant payloads.
 - Preserve raw external errors with `source_raw_err(...)`/`with_source(...)` where supported.
-- Replace runtime `anyhow::Result` constructors with `SourceResult`/`SinkResult` or local typed validation results.
+- Replace runtime `anyhow::Result` constructors with `SourceResult`/`SinkResult` and structured Postgres `PgReason`/`PgResult` internals.
 - Move `anyhow` out of runtime dependencies and keep it only for test helpers.
 - Restore `Tags::from_parse(...)` for source metadata tags to keep existing tag parsing semantics.
 

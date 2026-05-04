@@ -1,7 +1,8 @@
 use crate::postgres::config::PostgresConf;
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, SecondsFormat, TimeZone, Utc};
-use orion_error::conversion::SourceRawErr;
+use orion_error::conversion::{SourceErr, SourceRawErr, ToStructError};
+use orion_error::{OrionError, StructError, UnifiedReason};
 use sea_orm::sea_query::Values;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement, Value};
 use serde::{Deserialize, Serialize};
@@ -13,7 +14,39 @@ use wp_log::{info_data, warn_data};
 use wp_model_core::event_id::next_wp_event_id;
 use wp_model_core::raw::RawData;
 
-type PgResult<T> = Result<T, String>;
+pub(crate) type PgError = StructError<PgReason>;
+pub(crate) type PgResult<T> = Result<T, PgError>;
+
+#[derive(Debug, Clone, PartialEq, Serialize, OrionError)]
+pub(crate) enum PgReason {
+    #[orion_error(identity = "conf.postgres_config", message = "postgres config error")]
+    Config,
+    #[orion_error(identity = "logic.postgres_cursor", message = "postgres cursor error")]
+    Cursor,
+    #[orion_error(
+        identity = "logic.postgres_checkpoint",
+        message = "postgres checkpoint error"
+    )]
+    Checkpoint,
+    #[orion_error(identity = "logic.postgres_time", message = "postgres time error")]
+    Time,
+    #[orion_error(identity = "conf.postgres_parse", message = "postgres parse error")]
+    Parse,
+    #[orion_error(
+        identity = "sys.postgres_database",
+        message = "postgres database error"
+    )]
+    Database,
+    #[orion_error(identity = "sys.postgres_io", message = "postgres io error")]
+    Io,
+    #[orion_error(transparent)]
+    #[allow(dead_code)]
+    Uvs(UnifiedReason),
+}
+
+fn pg_err(reason: PgReason, detail: impl Into<String>) -> PgError {
+    reason.to_err().with_detail(detail)
+}
 
 const DEFAULT_BATCH: usize = 1000;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1000;
@@ -46,12 +79,12 @@ impl PostgresSource {
 
     /// 根据配置创建 PostgreSQL Source，并完成连接、游标计划、时区和 checkpoint 初始化。
     pub async fn new(key: String, tags: Tags, config: &PostgresConf) -> SourceResult<Self> {
-        let table =
-            required_opt_field("postgres.table", &config.table).map_err(SourceReason::other)?;
+        let table = required_opt_field("postgres.table", &config.table)
+            .source_err(SourceReason::Other, "initialize postgres source failed")?;
         let cursor_column = required_opt_field("postgres.cursor_column", &config.cursor_column)
-            .map_err(SourceReason::other)?;
-        let cursor_type =
-            CursorType::from_config(&config.cursor_type).map_err(SourceReason::other)?;
+            .source_err(SourceReason::Other, "initialize postgres source failed")?;
+        let cursor_type = CursorType::from_config(&config.cursor_type)
+            .source_err(SourceReason::Other, "initialize postgres source failed")?;
 
         let mut opt = ConnectOptions::new(config.get_database_url());
         opt.max_connections(3)
@@ -70,24 +103,24 @@ impl PostgresSource {
 
         let cursor_plan = CursorPlan::build(&db, &config.schema, table, cursor_column, cursor_type)
             .await
-            .map_err(SourceReason::other)?;
+            .source_err(SourceReason::Other, "initialize postgres source failed")?;
         // 无时区 start_from 和 Unix 时间戳按 PostgreSQL 当前连接的 session TimeZone 解释。
         // 这里在 Source 启动时固定一次，避免运行中数据库配置变化导致首次起点语义漂移。
         let session_tz = query_session_time_zone(&db)
             .await
-            .map_err(SourceReason::other)?;
+            .source_err(SourceReason::Other, "initialize postgres source failed")?;
         // start_from_format 只描述“用户输入怎么解析”；真正输出什么格式由数据库列类型决定。
         // 例如同样输入秒级时间，date 列最终只保留 YYYY-MM-DD。
         let start_from_format =
             parse_start_from_format(config.start_from_format.as_deref(), cursor_type)
-                .map_err(SourceReason::other)?;
+                .source_err(SourceReason::Other, "initialize postgres source failed")?;
         let start_from = normalize_optional_start_from(
             &cursor_plan,
             config.start_from.as_deref(),
             start_from_format.as_ref(),
             session_tz.offset,
         )
-        .map_err(SourceReason::other)?;
+        .source_err(SourceReason::Other, "initialize postgres source failed")?;
 
         let batch = config.batch.unwrap_or(DEFAULT_BATCH);
         let poll_interval =
@@ -98,13 +131,13 @@ impl PostgresSource {
         let table_ref = format!("{}.{}", quote_ident(&config.schema), quote_ident(table));
         let checkpoint_path = checkpoint_path(&key);
         let checkpoint = Self::load_checkpoint(&checkpoint_path, cursor_column, &cursor_plan)
-            .map_err(SourceReason::other)?;
+            .source_err(SourceReason::Other, "initialize postgres source failed")?;
         // checkpoint 优先于 start_from。start_from 只在首次启动且没有 checkpoint 时作为起点。
         if let Some(lower_bound) = resolve_lower_bound(checkpoint.as_ref(), start_from.as_deref()) {
             cursor_plan
                 .validate_active_lower_bound(&db, lower_bound)
                 .await
-                .map_err(SourceReason::other)?;
+                .source_err(SourceReason::Other, "initialize postgres source failed")?;
         }
 
         info_data!(
@@ -176,18 +209,21 @@ impl PostgresSource {
     async fn query_next_batch(&self) -> SourceResult<Vec<(String, String)>> {
         let statement = self.build_query_statement()?;
 
-        let rows = self.db.query_all(statement).await.map_err(|err| {
-            SourceReason::supplier_error(format!("postgres query batch failed: {err}"))
-        })?;
+        let rows = self
+            .db
+            .query_all(statement)
+            .await
+            .source_raw_err(SourceReason::SupplierError, "postgres query batch failed")?;
 
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
-            let cursor_raw: String = row.try_get_by("cursor_value").map_err(|err| {
-                SourceReason::other(format!("postgres source read cursor_value failed: {err}"))
-            })?;
-            let payload: String = row.try_get_by("payload").map_err(|err: sea_orm::DbErr| {
-                SourceReason::other(format!("postgres source read payload failed: {err}"))
-            })?;
+            let cursor_raw: String = row.try_get_by("cursor_value").source_raw_err(
+                SourceReason::Other,
+                "postgres source read cursor_value failed",
+            )?;
+            let payload: String = row
+                .try_get_by("payload")
+                .source_raw_err(SourceReason::Other, "postgres source read payload failed")?;
             out.push((cursor_raw, payload));
         }
         Ok(out)
@@ -213,9 +249,7 @@ impl PostgresSource {
             vec![
                 self.cursor_plan
                     .lower_bound_into_value(lower_bound)
-                    .map_err(|err| {
-                        SourceReason::other(format!("postgres resolve lower bound failed: {err}"))
-                    })?,
+                    .source_err(SourceReason::Other, "postgres resolve lower bound failed")?,
                 Value::BigUnsigned(Some(self.batch as u64)),
                 Value::String(Some(Box::new(table_name))),
             ]
@@ -244,34 +278,35 @@ impl PostgresSource {
             return Ok(None);
         }
 
-        let contents = std::fs::read_to_string(path)
-            .map_err(|err| format!("postgres read checkpoint {} failed: {err}", path.display()))?;
+        let contents = std::fs::read_to_string(path).source_err(
+            PgReason::Io,
+            format!("postgres read checkpoint {} failed", path.display()),
+        )?;
         if contents.trim().is_empty() {
             return Ok(None);
         }
 
-        let state: CheckpointState = serde_json::from_str(&contents).map_err(|err| {
+        let state: CheckpointState = serde_json::from_str(&contents).source_raw_err(
+            PgReason::Checkpoint,
             format!(
-                "postgres checkpoint file {} is invalid: {}; if you changed source cursor config, delete this checkpoint and restart",
-                path.display(),
-                err
-            )
-        })?;
+                "postgres checkpoint file {} is invalid; if you changed source cursor config, delete this checkpoint and restart",
+                path.display()
+            ),
+        )?;
         validate_checkpoint_state(&state, cursor_column, cursor_plan).map_err(|err| {
-            format!(
+            PgReason::Checkpoint.to_err().with_detail(format!(
                 "postgres checkpoint {} is incompatible with current config: {}; if you changed cursor_column/cursor_type or want to restart from a new cursor, delete this checkpoint and restart",
                 path.display(),
                 err
-            )
+            ))
         })?;
         Ok(Some(state))
     }
 
     /// 将当前批次最后一条游标值写入 checkpoint，并同步更新内存状态。
     fn persist_checkpoint(&mut self, last_cursor_raw: String) -> SourceResult<()> {
-        ensure_checkpoint_dir(&self.checkpoint_path).map_err(|err| {
-            SourceReason::other(format!("postgres ensure checkpoint dir failed: {err}"))
-        })?;
+        ensure_checkpoint_dir(&self.checkpoint_path)
+            .source_err(SourceReason::Other, "postgres ensure checkpoint dir failed")?;
 
         let state = CheckpointState {
             version: CHECKPOINT_VERSION,
@@ -280,13 +315,11 @@ impl PostgresSource {
             last_cursor_raw,
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
-        let content = serde_json::to_string_pretty(&state).map_err(|err| {
-            SourceReason::other(format!("postgres serialize checkpoint failed: {err}"))
-        })?;
+        let content = serde_json::to_string_pretty(&state)
+            .source_raw_err(SourceReason::Other, "postgres serialize checkpoint failed")?;
 
-        std::fs::write(&self.checkpoint_path, content).map_err(|err| {
-            SourceReason::other(format!("postgres write checkpoint failed: {err}"))
-        })?;
+        std::fs::write(&self.checkpoint_path, content)
+            .source_err(SourceReason::Other, "postgres write checkpoint failed")?;
         self.checkpoint = Some(state);
         Ok(())
     }
@@ -387,7 +420,10 @@ impl CursorType {
         match raw {
             "int" => Ok(Self::Int),
             "time" => Ok(Self::Time),
-            other => Err(format!("unsupported postgres cursor_type: {other}")),
+            other => Err(pg_err(
+                PgReason::Config,
+                format!("unsupported postgres cursor_type: {other}"),
+            )),
         }
     }
 
@@ -407,19 +443,28 @@ impl CursorType {
     ) -> PgResult<()> {
         let Some(start_from) = start_from else {
             if start_from_format.is_some() {
-                return Err("postgres.start_from_format requires postgres.start_from".to_string());
+                return Err(pg_err(
+                    PgReason::Config,
+                    "postgres.start_from_format requires postgres.start_from",
+                ));
             }
             return Ok(());
         };
 
         if start_from.trim().is_empty() {
-            return Err(format!(
-                "postgres.start_from must not be empty for {} cursor",
-                self.as_str()
+            return Err(pg_err(
+                PgReason::Config,
+                format!(
+                    "postgres.start_from must not be empty for {} cursor",
+                    self.as_str()
+                ),
             ));
         }
         if start_from_format.is_some() && self != CursorType::Time {
-            return Err("postgres.start_from_format is only supported for time cursor".to_string());
+            return Err(pg_err(
+                PgReason::Config,
+                "postgres.start_from_format is only supported for time cursor",
+            ));
         }
         Ok(())
     }
@@ -437,17 +482,23 @@ impl CursorType {
                 } else if is_decimal_type(&ty) {
                     Ok(LowerBoundBinding::TextParamWithCast("numeric"))
                 } else {
-                    Err(format!(
-                        "postgres source cursor_column in database {} must be numeric-like for cursor_type=int, got {}",
-                        cursor_column, data_type
+                    Err(pg_err(
+                        PgReason::Cursor,
+                        format!(
+                            "postgres source cursor_column in database {} must be numeric-like for cursor_type=int, got {}",
+                            cursor_column, data_type
+                        ),
                     ))
                 }
             }
             Self::Time => {
                 let Some(lower_bound_cast) = time_lower_bound_cast(&ty) else {
-                    return Err(format!(
-                        "postgres source cursor_column {} must be timestamp/date-like for cursor_type=time, got {}",
-                        cursor_column, data_type
+                    return Err(pg_err(
+                        PgReason::Cursor,
+                        format!(
+                            "postgres source cursor_column {} must be timestamp/date-like for cursor_type=time, got {}",
+                            cursor_column, data_type
+                        ),
                     ));
                 };
                 Ok(LowerBoundBinding::TextParamWithCast(lower_bound_cast))
@@ -490,7 +541,10 @@ impl CursorPlan {
         match self.lower_bound_binding {
             LowerBoundBinding::Integer => {
                 Ok(Value::BigInt(Some(raw.parse::<i64>().map_err(|err| {
-                    format!("postgres lower bound must be an integer: {err}")
+                    pg_err(
+                        PgReason::Cursor,
+                        format!("postgres lower bound must be an integer: {err}"),
+                    )
                 })?)))
             }
             // numeric/decimal 要保留原始精度文本；时间类也让 PostgreSQL 按目标类型 cast。
@@ -520,24 +574,31 @@ impl CursorPlan {
             sql,
             Values(vec![Value::String(Some(Box::new(raw.to_string())))]),
         );
-        db.query_one(stmt).await.map_err(|err| {
+        db.query_one(stmt).await.source_raw_err(
+            PgReason::Database,
             format!(
-                "postgres active lower bound {} cannot be cast to {}: {}",
-                raw, lower_bound_cast, err
-            )
-        })?;
+                "postgres active lower bound {} cannot be cast to {}",
+                raw, lower_bound_cast
+            ),
+        )?;
         Ok(())
     }
 
     /// 对下界值做 Rust 侧基础校验，整数游标会先校验为 i64。
     fn validate_lower_bound(&self, raw: &str, field_name: &str) -> PgResult<()> {
         if raw.trim().is_empty() {
-            return Err(format!("{field_name} must not be empty"));
+            return Err(pg_err(
+                PgReason::Cursor,
+                format!("{field_name} must not be empty"),
+            ));
         }
         if self.lower_bound_binding == LowerBoundBinding::Integer {
-            raw.parse::<i64>()
-                .map(|_| ())
-                .map_err(|err| format!("{field_name} must be an integer: {err}"))?;
+            raw.parse::<i64>().map(|_| ()).map_err(|err| {
+                pg_err(
+                    PgReason::Cursor,
+                    format!("{field_name} must be an integer: {err}"),
+                )
+            })?;
         }
         Ok(())
     }
@@ -586,16 +647,19 @@ async fn query_cursor_data_type(
     let row = db
         .query_one(stmt)
         .await
-        .map_err(|err| format!("postgres query cursor data type failed: {err}"))?;
+        .source_raw_err(PgReason::Database, "postgres query cursor data type failed")?;
     let Some(row) = row else {
-        return Err(format!(
-            "postgres source cursor_column not found: {}.{}.{}",
-            schema, table, cursor_column
+        return Err(pg_err(
+            PgReason::Cursor,
+            format!(
+                "postgres source cursor_column not found: {}.{}.{}",
+                schema, table, cursor_column
+            ),
         ));
     };
 
     row.try_get_by_index(0)
-        .map_err(|err| format!("postgres read cursor data type failed: {err}"))
+        .source_raw_err(PgReason::Database, "postgres read cursor data type failed")
 }
 
 /// 查询当前连接的 PostgreSQL session TimeZone，并固定启动时 UTC offset。
@@ -604,11 +668,16 @@ async fn query_session_time_zone(db: &DatabaseConnection) -> PgResult<DbSessionT
     let timezone_row = db
         .query_one(timezone_stmt)
         .await
-        .map_err(|err| format!("postgres SHOW TIME ZONE failed: {err}"))?
-        .ok_or_else(|| "postgres SHOW TIME ZONE returned no row".to_string())?;
+        .source_raw_err(PgReason::Database, "postgres SHOW TIME ZONE failed")?
+        .ok_or_else(|| {
+            pg_err(
+                PgReason::Database,
+                "postgres SHOW TIME ZONE returned no row",
+            )
+        })?;
     let name: String = timezone_row
         .try_get_by_index(0)
-        .map_err(|err| format!("postgres read session timezone failed: {err}"))?;
+        .source_raw_err(PgReason::Database, "postgres read session timezone failed")?;
 
     // PostgreSQL session TimeZone 可能是 Asia/Shanghai 这类 IANA 名称，也可能是 UTC/+08。
     // chrono::FixedOffset 不能解析完整 IANA 名称，所以这里让 PostgreSQL 按当前连接的
@@ -618,11 +687,20 @@ async fn query_session_time_zone(db: &DatabaseConnection) -> PgResult<DbSessionT
     let offset_row = db
         .query_one(offset_stmt)
         .await
-        .map_err(|err| format!("postgres session timezone offset query failed: {err}"))?
-        .ok_or_else(|| "postgres session timezone offset query returned no row".to_string())?;
-    let offset_seconds: i64 = offset_row
-        .try_get_by_index(0)
-        .map_err(|err| format!("postgres read session timezone offset failed: {err}"))?;
+        .source_raw_err(
+            PgReason::Database,
+            "postgres session timezone offset query failed",
+        )?
+        .ok_or_else(|| {
+            pg_err(
+                PgReason::Database,
+                "postgres session timezone offset query returned no row",
+            )
+        })?;
+    let offset_seconds: i64 = offset_row.try_get_by_index(0).source_raw_err(
+        PgReason::Database,
+        "postgres read session timezone offset failed",
+    )?;
     let offset = fixed_offset_from_seconds(offset_seconds)?;
 
     Ok(DbSessionTimeZone { name, offset })
@@ -705,22 +783,31 @@ fn validate_checkpoint_state(
     cursor_plan: &CursorPlan,
 ) -> PgResult<()> {
     if state.version != CHECKPOINT_VERSION {
-        return Err(format!(
-            "postgres checkpoint version mismatch: expect {}, got {}",
-            CHECKPOINT_VERSION, state.version
+        return Err(pg_err(
+            PgReason::Checkpoint,
+            format!(
+                "postgres checkpoint version mismatch: expect {}, got {}",
+                CHECKPOINT_VERSION, state.version
+            ),
         ));
     }
     if state.cursor_column != cursor_column {
-        return Err(format!(
-            "postgres checkpoint cursor_column mismatch: expect {}, got {}",
-            cursor_column, state.cursor_column
+        return Err(pg_err(
+            PgReason::Checkpoint,
+            format!(
+                "postgres checkpoint cursor_column mismatch: expect {}, got {}",
+                cursor_column, state.cursor_column
+            ),
         ));
     }
     if state.cursor_type != cursor_plan.cursor_type.as_str() {
-        return Err(format!(
-            "postgres checkpoint cursor_type mismatch: expect {}, got {}",
-            cursor_plan.cursor_type.as_str(),
-            state.cursor_type
+        return Err(pg_err(
+            PgReason::Checkpoint,
+            format!(
+                "postgres checkpoint cursor_type mismatch: expect {}, got {}",
+                cursor_plan.cursor_type.as_str(),
+                state.cursor_type
+            ),
         ));
     }
     cursor_plan.validate_lower_bound(
@@ -735,7 +822,7 @@ fn required_opt_field<'a>(name: &str, value: &'a Option<String>) -> PgResult<&'a
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| format!("{name} must not be empty"))
+        .ok_or_else(|| pg_err(PgReason::Config, format!("{name} must not be empty")))
 }
 
 /// 给 PostgreSQL 标识符加双引号，并转义内部双引号。
@@ -751,12 +838,10 @@ fn checkpoint_path(source_key: &str) -> PathBuf {
 /// 确保 checkpoint 文件所在目录存在。
 fn ensure_checkpoint_dir(path: &Path) -> PgResult<()> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| {
-            format!(
-                "postgres create checkpoint dir {} failed: {err}",
-                parent.display()
-            )
-        })?;
+        std::fs::create_dir_all(parent).source_err(
+            PgReason::Io,
+            format!("postgres create checkpoint dir {} failed", parent.display()),
+        )?;
     }
     Ok(())
 }
@@ -784,10 +869,17 @@ fn resolve_lower_bound<'a>(
 
 /// 将 PostgreSQL 返回的时区偏移秒数转换成 chrono::FixedOffset。
 fn fixed_offset_from_seconds(offset_seconds: i64) -> PgResult<FixedOffset> {
-    let offset_seconds = i32::try_from(offset_seconds)
-        .map_err(|err| format!("postgres session timezone offset out of range: {err}"))?;
+    let offset_seconds = i32::try_from(offset_seconds).map_err(|err| {
+        pg_err(
+            PgReason::Time,
+            format!("postgres session timezone offset out of range: {err}"),
+        )
+    })?;
     FixedOffset::east_opt(offset_seconds).ok_or_else(|| {
-        format!("postgres session timezone offset seconds is invalid: {offset_seconds}")
+        pg_err(
+            PgReason::Time,
+            format!("postgres session timezone offset seconds is invalid: {offset_seconds}"),
+        )
     })
 }
 
@@ -802,7 +894,10 @@ fn parse_start_from_format(
         return Ok(None);
     };
     if cursor_type != CursorType::Time {
-        return Err("postgres.start_from_format is only supported for time cursor".to_string());
+        return Err(pg_err(
+            PgReason::Config,
+            "postgres.start_from_format is only supported for time cursor",
+        ));
     }
     // 这里只决定“输入格式类别”。最终下界文本仍由 date/timestamp/timestamptz 分支决定。
     let kind = match raw {
@@ -840,8 +935,9 @@ fn normalize_time_start_from(
         "date" => normalize_date_start_from(raw, format, session_offset),
         "timestamp" => normalize_timestamp_start_from(raw, format, session_offset),
         "timestamptz" => normalize_timestamptz_start_from(raw, format, session_offset),
-        other => Err(format!(
-            "unsupported postgres time lower bound cast: {other}"
+        other => Err(pg_err(
+            PgReason::Time,
+            format!("unsupported postgres time lower bound cast: {other}"),
         )),
     }
 }
@@ -909,16 +1005,16 @@ fn parse_date_by_format(
         StartFromFormatKind::Pattern => {
             if pattern_has_offset(&format.raw) {
                 Ok(DateTime::parse_from_str(raw, &format.raw)
-                    .map_err(|err| format!("postgres.start_from parse failed: {err}"))?
+                    .source_raw_err(PgReason::Parse, "postgres.start_from parse failed")?
                     .date_naive())
             } else if pattern_has_time(&format.raw) {
                 Ok(NaiveDateTime::parse_from_str(raw, &format.raw)
-                    .map_err(|err| format!("postgres.start_from parse failed: {err}"))?
+                    .source_raw_err(PgReason::Parse, "postgres.start_from parse failed")?
                     .date())
             } else {
                 // 纯日期 pattern 必须用 NaiveDate 解析，不能用 NaiveDateTime。
                 NaiveDate::parse_from_str(raw, &format.raw)
-                    .map_err(|err| format!("postgres.start_from parse failed: {err}"))
+                    .source_raw_err(PgReason::Parse, "postgres.start_from parse failed")
             }
         }
     }
@@ -941,17 +1037,17 @@ fn parse_timestamp_by_format(
             if pattern_has_offset(&format.raw) {
                 // 用户给了时区但列是 timestamp，则只去掉时区，保留用户给定时区下的墙上时间。
                 Ok(DateTime::parse_from_str(raw, &format.raw)
-                    .map_err(|err| format!("postgres.start_from parse failed: {err}"))?
+                    .source_raw_err(PgReason::Parse, "postgres.start_from parse failed")?
                     .naive_local())
             } else if pattern_has_time(&format.raw) {
                 NaiveDateTime::parse_from_str(raw, &format.raw)
-                    .map_err(|err| format!("postgres.start_from parse failed: {err}"))
+                    .source_raw_err(PgReason::Parse, "postgres.start_from parse failed")
             } else {
                 // timestamp 列允许用户只给日期，此时把时间补成当天 00:00:00。
                 Ok(NaiveDate::parse_from_str(raw, &format.raw)
-                    .map_err(|err| format!("postgres.start_from parse failed: {err}"))?
+                    .source_raw_err(PgReason::Parse, "postgres.start_from parse failed")?
                     .and_hms_opt(0, 0, 0)
-                    .ok_or_else(|| "postgres.start_from parse failed".to_string())?)
+                    .ok_or_else(|| pg_err(PgReason::Parse, "postgres.start_from parse failed"))?)
             }
         }
     }
@@ -973,17 +1069,17 @@ fn parse_timestamptz_by_format(
         StartFromFormatKind::Pattern => {
             if pattern_has_offset(&format.raw) {
                 DateTime::parse_from_str(raw, &format.raw)
-                    .map_err(|err| format!("postgres.start_from parse failed: {err}"))
+                    .source_raw_err(PgReason::Parse, "postgres.start_from parse failed")
             } else if pattern_has_time(&format.raw) {
                 let naive = NaiveDateTime::parse_from_str(raw, &format.raw)
-                    .map_err(|err| format!("postgres.start_from parse failed: {err}"))?;
+                    .source_raw_err(PgReason::Parse, "postgres.start_from parse failed")?;
                 // 用户输入没有时区但目标是 timestamptz，按 PostgreSQL session TimeZone 绑定。
                 bind_naive_to_fixed_offset(naive, session_offset, "postgres.start_from")
             } else {
                 let naive = NaiveDate::parse_from_str(raw, &format.raw)
-                    .map_err(|err| format!("postgres.start_from parse failed: {err}"))?
+                    .source_raw_err(PgReason::Parse, "postgres.start_from parse failed")?
                     .and_hms_opt(0, 0, 0)
-                    .ok_or_else(|| "postgres.start_from parse failed".to_string())?;
+                    .ok_or_else(|| pg_err(PgReason::Parse, "postgres.start_from parse failed"))?;
                 bind_naive_to_fixed_offset(naive, session_offset, "postgres.start_from")
             }
         }
@@ -1016,7 +1112,7 @@ fn parse_timestamp_fallback(raw: &str, session_offset: FixedOffset) -> PgResult<
     if let Ok(date) = NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
         return date
             .and_hms_opt(0, 0, 0)
-            .ok_or_else(|| "postgres.start_from parse failed".to_string());
+            .ok_or_else(|| pg_err(PgReason::Parse, "postgres.start_from parse failed"));
     }
     Ok(parse_unix_auto(raw)?
         .with_timezone(&session_offset)
@@ -1037,7 +1133,7 @@ fn parse_timestamptz_fallback(
     if let Ok(date) = NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
         let naive = date
             .and_hms_opt(0, 0, 0)
-            .ok_or_else(|| "postgres.start_from parse failed".to_string())?;
+            .ok_or_else(|| pg_err(PgReason::Parse, "postgres.start_from parse failed"))?;
         return bind_naive_to_fixed_offset(naive, session_offset, "postgres.start_from");
     }
     Ok(parse_unix_auto(raw)?.with_timezone(&session_offset))
@@ -1049,26 +1145,36 @@ fn parse_unix_auto(raw: &str) -> PgResult<DateTime<Utc>> {
     match raw.len() {
         13 => parse_unix_millis(raw),
         10 => parse_unix_seconds(raw),
-        _ => Err("postgres.start_from parse failed".to_string()),
+        _ => Err(pg_err(PgReason::Parse, "postgres.start_from parse failed")),
     }
 }
 
 /// 将 Unix 秒解析为 UTC 时间点。
 fn parse_unix_seconds(raw: &str) -> PgResult<DateTime<Utc>> {
-    let secs = raw
-        .parse::<i64>()
-        .map_err(|err| format!("postgres.start_from parse unix seconds failed: {err}"))?;
-    DateTime::<Utc>::from_timestamp(secs, 0)
-        .ok_or_else(|| "postgres.start_from unix seconds out of range".to_string())
+    let secs = raw.parse::<i64>().source_raw_err(
+        PgReason::Parse,
+        "postgres.start_from parse unix seconds failed",
+    )?;
+    DateTime::<Utc>::from_timestamp(secs, 0).ok_or_else(|| {
+        pg_err(
+            PgReason::Parse,
+            "postgres.start_from unix seconds out of range",
+        )
+    })
 }
 
 /// 将 Unix 毫秒解析为 UTC 时间点。
 fn parse_unix_millis(raw: &str) -> PgResult<DateTime<Utc>> {
-    let millis = raw
-        .parse::<i64>()
-        .map_err(|err| format!("postgres.start_from parse unix milliseconds failed: {err}"))?;
-    DateTime::<Utc>::from_timestamp_millis(millis)
-        .ok_or_else(|| "postgres.start_from unix milliseconds out of range".to_string())
+    let millis = raw.parse::<i64>().source_raw_err(
+        PgReason::Parse,
+        "postgres.start_from parse unix milliseconds failed",
+    )?;
+    DateTime::<Utc>::from_timestamp_millis(millis).ok_or_else(|| {
+        pg_err(
+            PgReason::Parse,
+            "postgres.start_from unix milliseconds out of range",
+        )
+    })
 }
 
 /// 兜底解析常见无时区日期时间文本。
@@ -1084,10 +1190,12 @@ fn bind_naive_to_fixed_offset(
     field_name: &str,
 ) -> PgResult<DateTime<FixedOffset>> {
     // FixedOffset 没有夏令时跳变歧义；这里仍保留 single() 校验，防止后续替换时放宽语义。
-    offset
-        .from_local_datetime(&naive)
-        .single()
-        .ok_or_else(|| format!("{field_name} is ambiguous or invalid in session timezone"))
+    offset.from_local_datetime(&naive).single().ok_or_else(|| {
+        pg_err(
+            PgReason::Time,
+            format!("{field_name} is ambiguous or invalid in session timezone"),
+        )
+    })
 }
 
 /// 判断 chrono pattern 是否显式包含时区信息。

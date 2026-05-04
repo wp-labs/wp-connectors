@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use orion_error::prelude::SourceRawErr;
+use orion_error::prelude::{SourceErr, SourceRawErr};
 use sea_orm::{ConnectOptions, Database};
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -254,7 +254,12 @@ fn validate_postgres_source_conf(conf: &PostgresConf) -> SourceResult<()> {
         conf.start_from.as_deref(),
         conf.start_from_format.as_deref(),
     )
-    .map_err(|err| SourceReason::other(err.to_string()))?;
+    .map_err(|err| {
+        let detail = err.to_string();
+        Err::<(), _>(err)
+            .source_err(SourceReason::Other, detail)
+            .expect_err("mapping postgres cursor validation error should fail")
+    })?;
 
     Ok(())
 }
