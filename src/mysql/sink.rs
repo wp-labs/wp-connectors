@@ -86,12 +86,13 @@ impl AsyncRecordSink for MysqlSink {
             // 单条 INSERT + 多个 VALUES
             let mut sql = self.base_insert_prefix();
             sql.push_str(&raws.join(","));
-            if let Err(e) = self.db.execute_unprepared(sql.as_str()).await {
-                return Err(SinkReason::sink(format!(
-                    "mysql exec cloumns:{:?}, fail: {}, sql: {}",
-                    self.cloumn_name, e, sql
-                )));
-            }
+            self.db
+                .execute_unprepared(sql.as_str())
+                .await
+                .source_raw_err(
+                    SinkReason::Sink,
+                    format!("mysql exec columns: {:?}, sql: {}", self.cloumn_name, sql),
+                )?;
         }
         Ok(())
     }

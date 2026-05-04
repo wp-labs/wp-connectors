@@ -11,7 +11,7 @@ use actix_web::{App, HttpRequest, HttpResponse, HttpServer, web};
 use async_trait::async_trait;
 use bytes::Bytes;
 use flate2::read::GzDecoder;
-use orion_error::prelude::SourceRawErr;
+use orion_error::prelude::{SourceErr, SourceRawErr};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::{Mutex, RwLock, mpsc};
@@ -394,9 +394,9 @@ fn decode_body(body: web::Bytes, compression: CompressionKind) -> SourceResult<B
             }
             let mut decoder = GzDecoder::new(body.as_ref());
             let mut decoded = Vec::new();
-            decoder.read_to_end(&mut decoded).map_err(|e| {
-                SourceReason::supplier_error(format!("gzip decompression failed: {e}"))
-            })?;
+            decoder
+                .read_to_end(&mut decoded)
+                .source_err(SourceReason::SupplierError, "gzip decompression failed")?;
             Ok(Bytes::from(decoded))
         }
     }
@@ -415,10 +415,8 @@ fn parse_payloads(body: &[u8], fmt: &str) -> SourceResult<Vec<Bytes>> {
 }
 
 fn parse_json_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
-    let value: Value = serde_json::from_slice(body).map_err(|e| {
-        let msg = format!("invalid json payload: {e}");
-        SourceReason::supplier_error(msg.clone()).with_detail(msg)
-    })?;
+    let value: Value = serde_json::from_slice(body)
+        .source_raw_err(SourceReason::SupplierError, "invalid json payload")?;
     let values = match value {
         Value::Array(values) => values,
         other => vec![other],
@@ -429,16 +427,14 @@ fn parse_json_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
         .map(|value| {
             serde_json::to_vec(&value)
                 .map(Bytes::from)
-                .map_err(|e| SourceReason::supplier_error(format!("json serialize: {e}")))
+                .source_raw_err(SourceReason::SupplierError, "json serialize")
         })
         .collect()
 }
 
 fn parse_ndjson_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
-    let text = std::str::from_utf8(body).map_err(|e| {
-        let msg = format!("ndjson invalid utf-8: {e}");
-        SourceReason::supplier_error(msg.clone()).with_detail(msg)
-    })?;
+    let text = std::str::from_utf8(body)
+        .source_raw_err(SourceReason::SupplierError, "ndjson invalid utf-8")?;
     let mut lines = Vec::new();
 
     for (idx, raw_line) in text.lines().enumerate() {
@@ -446,13 +442,14 @@ fn parse_ndjson_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
         if line.is_empty() {
             continue;
         }
-        let value: Value = serde_json::from_str(line).map_err(|e| {
-            let msg = format!("invalid ndjson line {}: {e}", idx + 1);
-            SourceReason::supplier_error(msg)
-        })?;
-        lines.push(Bytes::from(serde_json::to_vec(&value).map_err(|e| {
-            SourceReason::supplier_error(format!("ndjson serialize line {}: {e}", idx + 1))
-        })?));
+        let value: Value = serde_json::from_str(line).source_raw_err(
+            SourceReason::SupplierError,
+            format!("invalid ndjson line {}", idx + 1),
+        )?;
+        lines.push(Bytes::from(serde_json::to_vec(&value).source_raw_err(
+            SourceReason::SupplierError,
+            format!("ndjson serialize line {}", idx + 1),
+        )?));
     }
 
     Ok(lines)

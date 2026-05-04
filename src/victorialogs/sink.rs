@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use orion_error::conversion::ToStructError;
+use orion_error::conversion::{SourceRawErr, ToStructError};
 use tokio::time::sleep;
 use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkReason, SinkResult};
 use wp_data_fmt::{FormatType, RecordFormatter};
@@ -58,9 +58,10 @@ impl VictoriaLogSink {
         value_map.extend(self.tags.clone());
         value_map.insert("_msg".to_string(), formatted_msg);
         value_map.insert("_time".to_string(), timestamp);
-        serde_json::to_string(&value_map).map_err(|e| {
-            SinkReason::sink(format!("build jsonline for victorialogs flush fail: {}", e))
-        })
+        serde_json::to_string(&value_map).source_raw_err(
+            SinkReason::Sink,
+            "build jsonline for victorialogs flush fail",
+        )
     }
 
     async fn send_payload(&self, payload: String) -> SinkResult<()> {

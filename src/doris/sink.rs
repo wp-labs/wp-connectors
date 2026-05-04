@@ -143,7 +143,7 @@ impl DorisSink {
 
         for record in records {
             serde_json::to_writer(&mut buffer, &JsonRecord(record.as_ref()))
-                .map_err(|e| sink_error(format!("json serialization failed: {}", e)))?;
+                .source_raw_err(SinkReason::Sink, "json serialization failed")?;
             buffer.push(b'\n');
         }
 

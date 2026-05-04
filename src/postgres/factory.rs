@@ -5,15 +5,17 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use wp_conf_base::ConfParser;
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
-    SinkReason, SinkResult, SinkSpec, SourceBuildCtx, SourceDefProvider, SourceFactory,
-    SourceHandle, SourceMeta, SourceReason, SourceResult, SourceSpec, SourceSvcIns, Tags,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
+    SinkHandle, SinkReason, SinkResult, SinkSpec, SourceBuildCtx, SourceDefProvider, SourceError,
+    SourceFactory, SourceHandle, SourceMeta, SourceReason, SourceResult, SourceSpec, SourceSvcIns,
+    Tags,
 };
 
 use crate::WP_SRC_VAL;
 use crate::postgres::{
-    PostgresSink, PostgresSource, config::PostgresConf,
-    source::validate_source_cursor_type_and_start_from,
+    PostgresSink, PostgresSource,
+    config::PostgresConf,
+    source::{PgError, validate_source_cursor_type_and_start_from},
 };
 
 pub struct PostgresSourceFactory;
@@ -247,23 +249,14 @@ fn validate_postgres_source_conf(conf: &PostgresConf) -> SourceResult<()> {
         conf.start_from.as_deref(),
         conf.start_from_format.as_deref(),
     )
-    .map_err(|err| {
-        let detail = err.to_string();
-        Err::<(), _>(err)
-            .source_err(SourceReason::Other, detail)
-            .expect_err("mapping postgres cursor validation error should fail")
-    })?;
+    .map_err(pg_error_to_source)?;
 
     Ok(())
 }
 
 fn build_postgres_sink_conf(spec: &SinkSpec) -> SinkResult<(PostgresConf, Vec<String>)> {
-    let mut conf = build_base_postgres_conf_from_params(&spec.params).map_err(|err| {
-        let detail = err.to_string();
-        Err::<(), _>(err)
-            .source_err(SinkReason::Sink, detail)
-            .expect_err("mapping postgres sink config error should fail")
-    })?;
+    let mut conf =
+        build_base_postgres_conf_from_params(&spec.params).map_err(source_error_to_sink)?;
 
     if let Some(i) = spec.params.get("batch_size").and_then(Value::as_u64) {
         conf.batch = Some(i as usize);
@@ -309,6 +302,20 @@ fn parse_non_negative_u64(value: &Value, field: &str) -> SourceResult<u64> {
     value
         .as_u64()
         .ok_or_else(|| SourceReason::other(format!("{field} must be a non-negative integer")))
+}
+
+fn pg_error_to_source(err: PgError) -> SourceError {
+    let detail = err.to_string();
+    Err::<(), _>(err)
+        .source_err(SourceReason::Other, detail)
+        .expect_err("mapping postgres cursor validation error should fail")
+}
+
+fn source_error_to_sink(err: SourceError) -> SinkError {
+    let detail = err.to_string();
+    Err::<(), _>(err)
+        .source_err(SinkReason::Sink, detail)
+        .expect_err("mapping postgres sink config error should fail")
 }
 
 #[cfg(test)]

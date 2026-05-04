@@ -7,7 +7,7 @@ use crate::utils::time_stat_utils::TimeStatUtils;
 use async_trait::async_trait;
 use flate2::Compression;
 use flate2::write::GzEncoder;
-use orion_error::prelude::SourceRawErr;
+use orion_error::prelude::{SourceErr, SourceRawErr};
 use reqwest::{Client, StatusCode};
 use std::io::Write;
 use std::sync::Arc;
@@ -91,7 +91,7 @@ impl HttpSink {
     /// Returns a Result containing the formatted string or an error
     fn format_records(&self, records: &[Arc<DataRecord>]) -> SinkResult<String> {
         String::from_utf8(self.format_records_bytes(records)?)
-            .map_err(|e| sink_error(format!("formatted body is not valid UTF-8: {}", e)))
+            .source_raw_err(SinkReason::Sink, "formatted body is not valid UTF-8")
     }
 
     // fn format_record_bytes(&self, record: &DataRecord) -> SinkResult<Vec<u8>> {
@@ -143,10 +143,10 @@ impl HttpSink {
                 let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
                 encoder
                     .write_all(data)
-                    .map_err(|e| sink_error(format!("gzip compression failed: {}", e)))?;
+                    .source_err(SinkReason::Sink, "gzip compression failed")?;
                 encoder
                     .finish()
-                    .map_err(|e| sink_error(format!("gzip compression failed: {}", e)))
+                    .source_err(SinkReason::Sink, "gzip compression failed")
             }
             _ => Err(sink_error(format!(
                 "unsupported compression algorithm: {}",
@@ -242,7 +242,7 @@ impl HttpSink {
         let response = request
             .send()
             .await
-            .map_err(|e| sink_error(format!("request failed: {}", e)))?;
+            .source_raw_err(SinkReason::Sink, "request failed")?;
 
         // Get status code
         let status = response.status();
@@ -407,7 +407,7 @@ impl AsyncCtrl for HttpSink {
             .timeout(Duration::from_secs(self.config.timeout_secs))
             .no_proxy()
             .build()
-            .map_err(|e| wp_connector_api::SinkReason::sink(format!("reconnect failed: {}", e)))?;
+            .source_raw_err(SinkReason::Sink, "reconnect failed")?;
         Ok(())
     }
 }

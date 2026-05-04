@@ -2,8 +2,6 @@ use crate::mysql::config::MysqlConf as MySqlConf;
 use async_trait::async_trait;
 use orion_error::conversion::SourceErr;
 use orion_error::conversion::SourceRawErr;
-use orion_error::conversion::ToStructError;
-use orion_error::reason::UnifiedReason;
 use sea_orm::ConnectionTrait;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, Statement};
 use std::collections::VecDeque;
@@ -125,11 +123,10 @@ impl MysqlSource {
                 vec![self.checkpoint.into()],
             ))
             .await
-            .map_err(|e| {
-                SourceReason::Uvs(UnifiedReason::data_error())
-                    .to_err()
-                    .with_detail(e.to_string())
-            })?;
+            .source_raw_err(
+                SourceReason::SupplierError,
+                "query mysql source data failed",
+            )?;
 
         if rows.is_empty() {
             return Err(SourceError::from(SourceReason::EOF));
@@ -137,11 +134,9 @@ impl MysqlSource {
 
         // 填充缓存
         for row in rows {
-            let json_str: String = row.try_get_by_index(0).map_err(|e| {
-                SourceReason::Uvs(UnifiedReason::data_error())
-                    .to_err()
-                    .with_detail(e.to_string())
-            })?;
+            let json_str: String = row
+                .try_get_by_index(0)
+                .source_raw_err(SourceReason::Other, "read mysql source row failed")?;
             self.data_cache.push_back(json_str);
         }
 
