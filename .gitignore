@@ -1,3 +1,4 @@
 target/
 .DS_Store
 _gal/.report
+Cargo.lock
