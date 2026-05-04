@@ -153,7 +153,7 @@ fn postgres_sink_defaults() -> ParamMap {
     params
 }
 
-fn build_base_postgres_conf_from_params(params: &ParamMap) -> Result<PostgresConf, String> {
+fn build_base_postgres_conf_from_params(params: &ParamMap) -> SourceResult<PostgresConf> {
     let mut conf = PostgresConf::default();
     if let Some(s) = params.get("endpoint").and_then(Value::as_str) {
         conf.endpoint = s.to_string();
@@ -189,23 +189,16 @@ fn build_base_postgres_conf_from_params(params: &ParamMap) -> Result<PostgresCon
         conf.start_from_format = Some(s.to_string());
     }
     if let Some(v) = params.get("poll_interval_ms") {
-        conf.poll_interval_ms = Some(
-            parse_non_negative_u64(v, "postgres.poll_interval_ms")
-                .map_err(|err| err.to_string())?,
-        );
+        conf.poll_interval_ms = Some(parse_non_negative_u64(v, "postgres.poll_interval_ms")?);
     }
     if let Some(v) = params.get("error_backoff_ms") {
-        conf.error_backoff_ms = Some(
-            parse_non_negative_u64(v, "postgres.error_backoff_ms")
-                .map_err(|err| err.to_string())?,
-        );
+        conf.error_backoff_ms = Some(parse_non_negative_u64(v, "postgres.error_backoff_ms")?);
     }
     Ok(conf)
 }
 
 fn build_postgres_source_conf(spec: &SourceSpec) -> SourceResult<PostgresConf> {
-    let conf = build_base_postgres_conf_from_params(&spec.params)
-        .map_err(|e| SourceReason::other(e.to_string()))?;
+    let conf = build_base_postgres_conf_from_params(&spec.params)?;
     validate_postgres_source_conf(&conf)?;
     Ok(conf)
 }
@@ -265,7 +258,12 @@ fn validate_postgres_source_conf(conf: &PostgresConf) -> SourceResult<()> {
 }
 
 fn build_postgres_sink_conf(spec: &SinkSpec) -> SinkResult<(PostgresConf, Vec<String>)> {
-    let mut conf = build_base_postgres_conf_from_params(&spec.params).map_err(SinkReason::sink)?;
+    let mut conf = build_base_postgres_conf_from_params(&spec.params).map_err(|err| {
+        let detail = err.to_string();
+        Err::<(), _>(err)
+            .source_err(SinkReason::Sink, detail)
+            .expect_err("mapping postgres sink config error should fail")
+    })?;
 
     if let Some(i) = spec.params.get("batch_size").and_then(Value::as_u64) {
         conf.batch = Some(i as usize);
@@ -307,10 +305,10 @@ fn parse_columns(value: Option<&Value>) -> SinkResult<Vec<String>> {
     Ok(out)
 }
 
-fn parse_non_negative_u64(value: &Value, field: &str) -> Result<u64, String> {
+fn parse_non_negative_u64(value: &Value, field: &str) -> SourceResult<u64> {
     value
         .as_u64()
-        .ok_or_else(|| format!("{field} must be a non-negative integer"))
+        .ok_or_else(|| SourceReason::other(format!("{field} must be a non-negative integer")))
 }
 
 #[cfg(test)]

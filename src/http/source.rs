@@ -289,12 +289,12 @@ async fn handle_request(
 
     let fmt = match resolve_fmt(&request, &query) {
         Ok(fmt) => fmt,
-        Err(err) => return error_response(StatusCode::UNSUPPORTED_MEDIA_TYPE, err),
+        Err(err) => return error_response(StatusCode::UNSUPPORTED_MEDIA_TYPE, err.to_string()),
     };
 
     let compression = match resolve_compression(&request, &query) {
         Ok(compression) => compression,
-        Err(err) => return error_response(StatusCode::UNSUPPORTED_MEDIA_TYPE, err),
+        Err(err) => return error_response(StatusCode::UNSUPPORTED_MEDIA_TYPE, err.to_string()),
     };
 
     let decoded = match decode_body(body, compression) {
@@ -319,7 +319,7 @@ async fn handle_request(
     }
 }
 
-fn resolve_fmt(request: &HttpRequest, query: &RequestQuery) -> Result<String, String> {
+fn resolve_fmt(request: &HttpRequest, query: &RequestQuery) -> SourceResult<String> {
     // 协议约束：请求参数优先级高于请求头，便于调用方在不改 header 的情况下做临时覆盖。
     let fmt = query
         .fmt
@@ -333,7 +333,7 @@ fn resolve_fmt(request: &HttpRequest, query: &RequestQuery) -> Result<String, St
     if matches!(fmt.as_str(), "json" | "ndjson") {
         Ok(fmt)
     } else {
-        Err(format!("unsupported fmt: {fmt}"))
+        Err(SourceReason::other(format!("unsupported fmt: {fmt}")))
     }
 }
 
@@ -356,7 +356,7 @@ fn content_type_to_fmt(value: Option<&actix_web::http::header::HeaderValue>) -> 
 fn resolve_compression(
     request: &HttpRequest,
     query: &RequestQuery,
-) -> Result<CompressionKind, String> {
+) -> SourceResult<CompressionKind> {
     // 只认 Content-Encoding，不读取 Accept-Encoding。
     // 原因：这里处理的是"请求体已经采用何种编码"，不是"客户端希望响应怎么编码"。
     let compression = query
@@ -379,7 +379,9 @@ fn resolve_compression(
     match compression.as_str() {
         "none" | "identity" => Ok(CompressionKind::None),
         "gzip" => Ok(CompressionKind::Gzip),
-        _ => Err(format!("unsupported compression: {compression}")),
+        _ => Err(SourceReason::other(format!(
+            "unsupported compression: {compression}"
+        ))),
     }
 }
 
