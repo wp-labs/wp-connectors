@@ -1,7 +1,9 @@
 use crate::mysql::config::MysqlConf as MySqlConf;
 use async_trait::async_trait;
-use orion_error::reason::UnifiedReason;
+use orion_error::conversion::SourceErr;
+use orion_error::conversion::SourceRawErr;
 use orion_error::conversion::ToStructError;
+use orion_error::reason::UnifiedReason;
 use sea_orm::ConnectionTrait;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, Statement};
 use std::collections::VecDeque;
@@ -12,8 +14,6 @@ use wp_connector_api::{
 };
 use wp_log::info_data;
 use wp_model_core::raw::RawData;
-
-type AnyResult<T> = anyhow::Result<T>;
 
 pub struct MysqlSource {
     key: String,
@@ -30,11 +30,11 @@ impl MysqlSource {
         &self.key
     }
 
-    pub async fn new(key: String, tags: Tags, config: &MySqlConf) -> AnyResult<Self> {
+    pub async fn new(key: String, tags: Tags, config: &MySqlConf) -> SourceResult<Self> {
         // table 在新版配置中为 Option<String>
         let table = config.table.as_deref().unwrap_or("");
         if table.trim().is_empty() {
-            anyhow::bail!("mysql.table must not be empty");
+            return Err(SourceReason::other("mysql.table must not be empty"));
         }
 
         wp_log::info_data!("[mysql] database: {:?}, table: {}", config.database, table);
@@ -50,7 +50,9 @@ impl MysqlSource {
             .max_lifetime(Duration::from_secs(8))
             .sqlx_logging(true)
             .sqlx_logging_level(log::LevelFilter::Debug);
-        let db = Database::connect(opt).await?;
+        let db = Database::connect(opt)
+            .await
+            .source_raw_err(SourceReason::SupplierError, "connect mysql source failed")?;
 
         let cols_sql = "SELECT COLUMN_NAME, DATA_TYPE \
                     FROM INFORMATION_SCHEMA.COLUMNS \
@@ -62,11 +64,18 @@ impl MysqlSource {
             vec![config.database.clone().into(), table.to_string().into()],
         );
 
-        let col_rows = db.query_all(cols_stmt).await?;
+        let col_rows = db.query_all(cols_stmt).await.source_raw_err(
+            SourceReason::SupplierError,
+            "query mysql source columns failed",
+        )?;
         let mut parts = Vec::with_capacity(col_rows.len());
         for row in col_rows {
-            let name: String = row.try_get_by_index(0)?;
-            let dt: String = row.try_get_by_index(1)?;
+            let name: String = row
+                .try_get_by_index(0)
+                .source_raw_err(SourceReason::Other, "read mysql column name failed")?;
+            let dt: String = row
+                .try_get_by_index(1)
+                .source_raw_err(SourceReason::Other, "read mysql column data type failed")?;
             let expr = match dt.to_ascii_lowercase().as_str() {
                 "binary" | "varbinary" | "blob" | "mediumblob" | "longblob" => {
                     format!("'{}', TO_BASE64(`{}`)", name, name)
@@ -160,19 +169,23 @@ impl MysqlSource {
     }
 
     /// 获取并新增 checkpoint 文件
-    pub fn get_checkpoints(file_name: &str) -> anyhow::Result<u64> {
+    pub fn get_checkpoints(file_name: &str) -> SourceResult<u64> {
         let path_str = format!("./.run/.checkpoints/{}.dat", file_name);
         let path = Path::new(&path_str);
         if path.exists() {
-            let contents = std::fs::read_to_string(path)?;
+            let contents = std::fs::read_to_string(path)
+                .source_err(SourceReason::Other, "read mysql checkpoint failed")?;
             if !contents.trim().is_empty() {
-                return Ok(serde_json::from_str(&contents)?);
+                return serde_json::from_str(&contents)
+                    .source_raw_err(SourceReason::Other, "parse mysql checkpoint failed");
             }
             return Ok(0);
         }
 
-        std::fs::create_dir_all("./.run/.checkpoints")?;
-        std::fs::File::create(path)?;
+        std::fs::create_dir_all("./.run/.checkpoints")
+            .source_err(SourceReason::Other, "create mysql checkpoint dir failed")?;
+        std::fs::File::create(path)
+            .source_err(SourceReason::Other, "create mysql checkpoint file failed")?;
         Ok(0)
     }
 

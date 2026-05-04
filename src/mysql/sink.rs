@@ -1,10 +1,9 @@
 use async_trait::async_trait;
+use orion_error::prelude::SourceRawErr;
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use std::collections::HashMap;
 use std::sync::Arc;
-use wp_connector_api::{
-    AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkError, SinkReason, SinkResult,
-};
+use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkReason, SinkResult};
 use wp_log::error_data;
 use wp_model_core::model::{DataRecord, DataType};
 
@@ -64,9 +63,10 @@ impl AsyncCtrl for MysqlSink {
         Ok(())
     }
     async fn reconnect(&mut self) -> SinkResult<()> {
-        self.db.ping().await.map_err(|e| {
-            SinkReason::sink(format!("reconnect mysql fail: {}", e))
-        })?;
+        self.db
+            .ping()
+            .await
+            .source_raw_err(SinkReason::Sink, "reconnect mysql fail")?;
         Ok(())
     }
 }
@@ -100,25 +100,17 @@ impl AsyncRecordSink for MysqlSink {
 #[async_trait]
 impl AsyncRawDataSink for MysqlSink {
     async fn sink_str(&mut self, _data: &str) -> SinkResult<()> {
-        Err(SinkError::from(SinkReason::Sink(
-            "mysql sink does not accept raw input".into(),
-        )))
+        Err(SinkReason::sink("mysql sink does not accept raw input"))
     }
     async fn sink_bytes(&mut self, _data: &[u8]) -> SinkResult<()> {
-        Err(SinkError::from(SinkReason::Sink(
-            "mysql sink does not accept raw bytes".into(),
-        )))
+        Err(SinkReason::sink("mysql sink does not accept raw bytes"))
     }
 
     async fn sink_str_batch(&mut self, _data: Vec<&str>) -> SinkResult<()> {
-        Err(SinkError::from(SinkReason::Sink(
-            "mysql sink does not accept raw input".into(),
-        )))
+        Err(SinkReason::sink("mysql sink does not accept raw input"))
     }
     async fn sink_bytes_batch(&mut self, _data: Vec<&[u8]>) -> SinkResult<()> {
-        Err(SinkError::from(SinkReason::Sink(
-            "mysql sink does not accept raw bytes".into(),
-        )))
+        Err(SinkReason::sink("mysql sink does not accept raw bytes"))
     }
 }
 

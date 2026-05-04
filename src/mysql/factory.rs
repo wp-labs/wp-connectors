@@ -3,14 +3,15 @@ use crate::mysql::config::MysqlConf;
 use super::sink::MysqlSink;
 use super::source::MysqlSource;
 use async_trait::async_trait;
+use orion_error::prelude::SourceRawErr;
 use sea_orm::{ConnectOptions, Database};
 use serde_json::json;
 use std::time::Duration;
 use wp_conf_base::ConfParser;
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
-    SinkHandle, SinkReason, SinkResult, SinkSpec, SourceDefProvider, SourceFactory, SourceHandle,
-    SourceMeta, SourceReason, SourceResult, SourceSvcIns, Tags,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
+    SinkReason, SinkResult, SinkSpec, SourceDefProvider, SourceFactory, SourceHandle, SourceMeta,
+    SourceReason, SourceResult, SourceSvcIns, Tags,
 };
 
 use crate::WP_SRC_VAL;
@@ -30,7 +31,7 @@ impl wp_connector_api::SourceFactory for MySQLSourceFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if endpoint.trim().is_empty() {
-            return Err(SourceReason::other("mysql.endpoint must not be empty".into()).into());
+            return Err(SourceReason::other("mysql.endpoint must not be empty"));
         }
 
         let database = spec
@@ -39,7 +40,7 @@ impl wp_connector_api::SourceFactory for MySQLSourceFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if database.trim().is_empty() {
-            return Err(SourceReason::other("mysql.database must not be empty".into()).into());
+            return Err(SourceReason::other("mysql.database must not be empty"));
         }
 
         Ok(())
@@ -76,9 +77,7 @@ impl wp_connector_api::SourceFactory for MySQLSourceFactory {
         }
         let mut meta_tags = Tags::from_parse(&spec.tags);
         meta_tags.set(WP_SRC_VAL, "mysql");
-        let source = MysqlSource::new(spec.name.clone(), meta_tags.clone(), &conf)
-            .await
-            .map_err(|err| SourceReason::other(err))?;
+        let source = MysqlSource::new(spec.name.clone(), meta_tags.clone(), &conf).await?;
 
         let mut meta = SourceMeta::new(spec.name.clone(), spec.kind.clone());
         meta.tags = meta_tags;
@@ -101,7 +100,7 @@ impl SinkFactory for MySQLSinkFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if endpoint.trim().is_empty() {
-            return Err(SinkReason::sink("mysql.endpoint must not be empty").into());
+            return Err(SinkReason::sink("mysql.endpoint must not be empty"));
         }
         let database = spec
             .params
@@ -109,12 +108,12 @@ impl SinkFactory for MySQLSinkFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if database.trim().is_empty() {
-            return Err(SinkReason::sink("mysql.database must not be empty").into());
+            return Err(SinkReason::sink("mysql.database must not be empty"));
         }
         if let Some(i) = spec.params.get("batch").and_then(|v| v.as_i64())
             && i <= 0
         {
-            return Err(SinkReason::sink("mysql.batch must be > 0").into());
+            return Err(SinkReason::sink("mysql.batch must be > 0"));
         }
         Ok(())
     }
@@ -148,7 +147,7 @@ impl SinkFactory for MySQLSinkFactory {
                     if let Some(s) = item.as_str() {
                         out.push(s.to_string());
                     } else {
-                        return Err(SinkReason::sink("mysql.columns entries must be string").into());
+                        return Err(SinkReason::sink("mysql.columns entries must be string"));
                     }
                 }
                 out
@@ -166,9 +165,9 @@ impl SinkFactory for MySQLSinkFactory {
             .sqlx_logging(false)
             .map_sqlx_mysql_opts(|opt| opt.statement_cache_capacity(0))
             .sqlx_logging_level(log::LevelFilter::Info);
-        let db = Database::connect(opt).await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!("connect mysql fail: {err}")))
-        })?;
+        let db = Database::connect(opt)
+            .await
+            .source_raw_err(SinkReason::Sink, "connect mysql fail")?;
         let table = conf.table.clone().unwrap_or_else(|| spec.name.clone());
         let sink = MysqlSink::new(db, table, columns);
         Ok(SinkHandle::new(Box::new(sink)))

@@ -82,10 +82,10 @@ impl PostgresConf {
     }
 
     /// 便捷封装：从 url 解析并返回结构体。
-    pub fn from_url(url: &str) -> anyhow::Result<Self> {
+    pub fn from_url(url: &str) -> Result<Self, String> {
         let mut s = url;
         Self::parse_postgres_connect(&mut s)
-            .map_err(|e| anyhow::anyhow!("parse postgres url failed: {:?}", e))
+            .map_err(|e| format!("parse postgres url failed: {e:?}"))
     }
 }
 

@@ -1,6 +1,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+use orion_error::prelude::SourceRawErr;
 
 use prometheus::{Encoder, TextEncoder};
 use std::sync::Arc;
@@ -131,10 +132,7 @@ impl VictoriaMetricExporter {
         }
         let mut buffer = Vec::new();
         if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
-            return Err(
-                SinkReason::sink("prometheus encode error")
-                    .with_detail(e.to_string()),
-            );
+            return Err(SinkReason::sink("prometheus encode error").with_detail(e.to_string()));
         }
         // 优先使用调用方提供的时间戳（来自 DataRecord.end_time），否则退回到当前时间。
         let ts = ts_ms.unwrap_or_else(|| {
@@ -145,10 +143,12 @@ impl VictoriaMetricExporter {
         });
         // let buffer = append_timestamp_to_each_sample(&buffer, ts);
         let url = format!("{}?time_stamp={}", write_url, ts);
-        let response = client.post(&url).body(buffer).send().await.map_err(|e| {
-            SinkReason::sink("reqwest send error")
-                .with_detail(e.to_string())
-        })?;
+        let response = client
+            .post(&url)
+            .body(buffer)
+            .send()
+            .await
+            .source_raw_err(SinkReason::Sink, "reqwest send error")?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -208,31 +208,27 @@ impl wp_connector_api::AsyncCtrl for VictoriaMetricExporter {
 #[async_trait]
 impl wp_connector_api::AsyncRawDataSink for VictoriaMetricExporter {
     async fn sink_str(&mut self, _data: &str) -> SinkResult<()> {
-        Err(SinkReason::Sink(
-            "VictoriaMetric exporter does not support raw input; route TDC metrics only".into(),
-        )
-        .into())
+        Err(SinkReason::sink(
+            "VictoriaMetric exporter does not support raw input; route TDC metrics only",
+        ))
     }
 
     async fn sink_bytes(&mut self, _data: &[u8]) -> SinkResult<()> {
-        Err(SinkReason::Sink(
-            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only".into(),
-        )
-        .into())
+        Err(SinkReason::sink(
+            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only",
+        ))
     }
 
     async fn sink_str_batch(&mut self, _data: Vec<&str>) -> SinkResult<()> {
-        Err(SinkReason::Sink(
-            "VictoriaMetric exporter does not support raw input; route TDC metrics only".into(),
-        )
-        .into())
+        Err(SinkReason::sink(
+            "VictoriaMetric exporter does not support raw input; route TDC metrics only",
+        ))
     }
 
     async fn sink_bytes_batch(&mut self, _data: Vec<&[u8]>) -> SinkResult<()> {
-        Err(SinkReason::Sink(
-            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only".into(),
-        )
-        .into())
+        Err(SinkReason::sink(
+            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only",
+        ))
     }
 }
 

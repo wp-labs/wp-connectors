@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use orion_error::prelude::SourceRawErr;
 use serde_json::json;
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
-    SinkHandle, SinkReason, SinkResult, SinkSpec,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
+    SinkReason, SinkResult, SinkSpec,
 };
 
 use crate::http_utils::join_endpoint_path;
@@ -74,11 +75,7 @@ impl SinkFactory for VictoriaMetricFactory {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs_f64(conf.timeout_secs))
             .build()
-            .map_err(|err| {
-                SinkError::from(SinkReason::sink(format!(
-                    "build victoriametric client failed: {err}"
-                )))
-            })?;
+            .source_raw_err(SinkReason::Sink, "build victoriametric client failed")?;
         let write_url = join_endpoint_path(&conf.endpoint, &conf.api_path);
         let mut sink = VictoriaMetricExporter::new(
             write_url,

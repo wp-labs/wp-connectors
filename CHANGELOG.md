@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.4] - 2026-05-04
+
+### Changed
+- Adapt connector error handling for `wp-connector-api` `0.10.1` unit `SinkReason`/`SourceReason` variants.
+- Store connector error messages on `StructError.detail` instead of reason variant payloads.
+- Preserve raw external errors with `source_raw_err(...)`/`with_source(...)` where supported.
+- Replace runtime `anyhow::Result` constructors with `SourceResult`/`SinkResult` or local typed validation results.
+- Move `anyhow` out of runtime dependencies and keep it only for test helpers.
+- Restore `Tags::from_parse(...)` for source metadata tags to keep existing tag parsing semantics.
+
+### Fixed
+- Update unit tests to assert reason classification separately from `StructError.detail`.
+
 ## [0.13.3] - 2026-05-03
 
 ### Changed
@@ -139,7 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.13.3...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.13.4...HEAD
+[0.13.4]: https://github.com/wp-labs/wp-connectors/compare/v0.13.3...v0.13.4
 [0.13.3]: https://github.com/wp-labs/wp-connectors/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/wp-labs/wp-connectors/compare/v0.12.0...v0.13.2
 [0.12.0]: https://github.com/wp-labs/wp-connectors/compare/v0.10.0...v0.12.0

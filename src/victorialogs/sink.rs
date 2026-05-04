@@ -3,10 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use orion_error::conversion::ToStructError;
 use tokio::time::sleep;
-use wp_connector_api::{
-    AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkError, SinkReason, SinkResult,
-};
+use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkReason, SinkResult};
 use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_log::error_data;
 use wp_model_core::model::{DataRecord, Value, fmt_def::TextFmt};
@@ -60,10 +59,7 @@ impl VictoriaLogSink {
         value_map.insert("_msg".to_string(), formatted_msg);
         value_map.insert("_time".to_string(), timestamp);
         serde_json::to_string(&value_map).map_err(|e| {
-            SinkReason::sink(format!(
-                "build jsonline for victorialogs flush fail: {}",
-                e
-            ))
+            SinkReason::sink(format!("build jsonline for victorialogs flush fail: {}", e))
         })
     }
 
@@ -84,18 +80,16 @@ impl VictoriaLogSink {
                     }
                     error_data!("reqwest send error, text: {:?}", resp.text().await);
                     if !status.is_server_error() {
-                        return Err(SinkError::from(SinkReason::Sink(
-                            "reqwest send error".to_string(),
-                        )));
+                        return Err(SinkReason::sink("reqwest send error"));
                     }
                 }
                 Err(e) => {
                     error_data!("reqwest send error, text: {:?}", e);
                     if !(e.is_timeout() || e.is_connect()) {
-                        return Err(SinkReason::sink(format!(
-                            "reqwest send fail: {}",
-                            e
-                        )));
+                        return Err(SinkReason::Sink
+                            .to_err()
+                            .with_detail("reqwest send fail")
+                            .with_source(e));
                     }
                 }
             }
@@ -109,9 +103,7 @@ impl VictoriaLogSink {
             }
         }
 
-        Err(SinkError::from(SinkReason::Sink(
-            "reqwest send fail after retries".to_string(),
-        )))
+        Err(SinkReason::sink("reqwest send fail after retries"))
     }
 
     pub(crate) fn new(

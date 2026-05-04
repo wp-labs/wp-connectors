@@ -7,6 +7,7 @@ use crate::utils::time_stat_utils::TimeStatUtils;
 use async_trait::async_trait;
 use flate2::Compression;
 use flate2::write::GzEncoder;
+use orion_error::prelude::SourceRawErr;
 use reqwest::{Client, StatusCode};
 use std::io::Write;
 use std::sync::Arc;
@@ -51,7 +52,7 @@ impl HttpSink {
             .timeout(Duration::from_secs(config.timeout_secs))
             .no_proxy()
             .build()
-            .map_err(|e| SinkError::from(SinkReason::sink(format!("http client build: {e}"))))?;
+            .source_raw_err(SinkReason::Sink, "http client build")?;
 
         // Generate unique instance ID from global atomic counter
         let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -253,7 +254,7 @@ impl HttpSink {
             Ok(())
         } else {
             // Extract response body for error message
-            let body = response
+            let body: String = response
                 .text()
                 .await
                 .unwrap_or_else(|_| String::from("(unable to read response body)"));
@@ -406,12 +407,7 @@ impl AsyncCtrl for HttpSink {
             .timeout(Duration::from_secs(self.config.timeout_secs))
             .no_proxy()
             .build()
-            .map_err(|e| {
-                wp_connector_api::SinkError::from(wp_connector_api::SinkReason::Sink(format!(
-                    "reconnect failed: {}",
-                    e
-                )))
-            })?;
+            .map_err(|e| wp_connector_api::SinkReason::sink(format!("reconnect failed: {}", e)))?;
         Ok(())
     }
 }
@@ -902,8 +898,11 @@ mod tests {
         assert!(result.is_err());
 
         let err = result.unwrap_err();
+        assert_eq!(err.reason(), &SinkReason::Sink);
         assert!(
-            matches!(err.reason(), SinkReason::Sink(m) if m.contains("unsupported compression algorithm"))
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("unsupported compression algorithm"))
         );
     }
 

@@ -12,6 +12,7 @@ use crate::elasticsearch::config::ElasticsearchSinkConfig;
 use crate::utils::fmt::{BatchFormat, fmt_bytes};
 use crate::utils::time_stat_utils::TimeStatUtils;
 use async_trait::async_trait;
+use orion_error::prelude::SourceRawErr;
 use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -69,7 +70,7 @@ impl ElasticsearchSink {
             .timeout(Duration::from_secs(config.timeout_secs))
             .no_proxy()
             .build()
-            .map_err(|e| SinkError::from(SinkReason::sink(format!("es client build: {e}"))))?;
+            .source_raw_err(SinkReason::Sink, "es client build")?;
 
         // 预先构建完整的 Bulk API URL
         let url = format!("{}/_bulk", config.endpoint());

@@ -3,7 +3,7 @@ resolver = "2"
 members = ["."]  # 当前包作为workspace成员
 
 [workspace.package]
-version = "0.13.3" # @gxl:set(version)
+version = "0.13.4" # @gxl:set(version)
 edition = "2024"
 description = "Stable connectors for warp-parse supporting source and sink functionality"
 authors = ["WP Labs Team"]
@@ -23,7 +23,7 @@ wp-conf-base = "0.4"
 wp-data-fmt = "0.2"
 
 orion_exp = "0.1"
-orion-error = { version = "0.8", features = ["anyhow"] }
+orion-error = "0.8"
 orion_conf = { version = "0.7", features = ["yaml", "toml"] }
 
 async-trait = "0.1"
@@ -111,7 +111,6 @@ orion-error = { workspace = true }
 orion_conf = { workspace = true }
 
 async-trait = { workspace = true }
-anyhow = { workspace = true }
 chrono = { workspace = true }
 log = { workspace = true }
 rdkafka-wrap = { workspace = true, optional = true  }
@@ -139,6 +138,7 @@ sysinfo = { version = "0.38", default-features = false, features = ["system"], o
 
 [dev-dependencies]
 wp-connector-test-utils = { version = "0.1.1", git = "https://github.com/wp-labs/wp-connector-test-utils.git" }
+anyhow = { workspace = true }
 env_logger = { workspace = true }
 httpmock = "0.8"
 quickcheck = "1.0"

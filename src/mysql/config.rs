@@ -61,10 +61,9 @@ impl MysqlConf {
     }
 
     /// 便捷封装：从 url 解析并返回结构体。
-    pub fn from_url(url: &str) -> anyhow::Result<Self> {
+    pub fn from_url(url: &str) -> Result<Self, String> {
         let mut s = url;
-        Self::parse_mysql_connect(&mut s)
-            .map_err(|e| anyhow::anyhow!("parse mysql url failed: {:?}", e))
+        Self::parse_mysql_connect(&mut s).map_err(|e| format!("parse mysql url failed: {e:?}"))
     }
 
     /// 将配置转换为扁平的 toml::Table，便于写入 `SinkInstanceConf.core.params`。

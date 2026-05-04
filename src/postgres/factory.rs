@@ -1,11 +1,12 @@
 use async_trait::async_trait;
+use orion_error::prelude::SourceRawErr;
 use sea_orm::{ConnectOptions, Database};
 use serde_json::{Value, json};
 use std::time::Duration;
 use wp_conf_base::ConfParser;
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
-    SinkHandle, SinkReason, SinkResult, SinkSpec, SourceBuildCtx, SourceDefProvider, SourceFactory,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
+    SinkReason, SinkResult, SinkSpec, SourceBuildCtx, SourceDefProvider, SourceFactory,
     SourceHandle, SourceMeta, SourceReason, SourceResult, SourceSpec, SourceSvcIns, Tags,
 };
 
@@ -32,9 +33,7 @@ impl SourceFactory for PostgresSourceFactory {
         let conf = build_postgres_source_conf(spec)?;
         let mut meta_tags = Tags::from_parse(&spec.tags);
         meta_tags.set(WP_SRC_VAL, "postgres");
-        let source = PostgresSource::new(spec.name.clone(), meta_tags.clone(), &conf)
-            .await
-            .map_err(|err| SourceReason::other(err))?;
+        let source = PostgresSource::new(spec.name.clone(), meta_tags.clone(), &conf).await?;
 
         let mut meta = SourceMeta::new(spec.name.clone(), spec.kind.clone());
         meta.tags = meta_tags;
@@ -70,9 +69,9 @@ impl SinkFactory for PostgresSinkFactory {
             .sqlx_logging(false)
             .map_sqlx_postgres_opts(|opt| opt.statement_cache_capacity(0))
             .sqlx_logging_level(log::LevelFilter::Info);
-        let db = Database::connect(opt).await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!("connect postgres fail: {err}")))
-        })?;
+        let db = Database::connect(opt)
+            .await
+            .source_raw_err(SinkReason::Sink, "connect postgres fail")?;
         let table = conf.table.clone().unwrap_or_else(|| spec.name.clone());
         let sink = PostgresSink::new(db, table, columns);
         Ok(SinkHandle::new(Box::new(sink)))
@@ -205,42 +204,49 @@ fn build_base_postgres_conf_from_params(params: &ParamMap) -> Result<PostgresCon
 }
 
 fn build_postgres_source_conf(spec: &SourceSpec) -> SourceResult<PostgresConf> {
-    let conf = build_base_postgres_conf_from_params(&spec.params).map_err(|e| SourceReason::other(e))?;
+    let conf = build_base_postgres_conf_from_params(&spec.params)
+        .map_err(|e| SourceReason::other(e.to_string()))?;
     validate_postgres_source_conf(&conf)?;
     Ok(conf)
 }
 
 fn validate_postgres_source_conf(conf: &PostgresConf) -> SourceResult<()> {
     if conf.endpoint.trim().is_empty() {
-        return Err(SourceReason::other("postgres.endpoint must not be empty".into()).into());
+        return Err(SourceReason::other("postgres.endpoint must not be empty"));
     }
     if conf.database.trim().is_empty() {
-        return Err(SourceReason::other("postgres.database must not be empty".into()).into());
+        return Err(SourceReason::other("postgres.database must not be empty"));
     }
     if conf.schema.trim().is_empty() {
-        return Err(SourceReason::other("postgres.schema must not be empty".into()).into());
+        return Err(SourceReason::other("postgres.schema must not be empty"));
     }
     let table = conf.table.as_deref().unwrap_or("").trim();
     if table.is_empty() {
-        return Err(SourceReason::other("postgres.table must not be empty".into()).into());
+        return Err(SourceReason::other("postgres.table must not be empty"));
     }
     let cursor_column = conf.cursor_column.as_deref().unwrap_or("").trim();
     if cursor_column.is_empty() {
-        return Err(SourceReason::other("postgres.cursor_column must not be empty".into()).into());
+        return Err(SourceReason::other(
+            "postgres.cursor_column must not be empty",
+        ));
     }
 
     let batch = conf.batch.unwrap_or(5000);
     if batch == 0 {
-        return Err(SourceReason::other("postgres.batch must be > 0".into()).into());
+        return Err(SourceReason::other("postgres.batch must be > 0"));
     }
 
     let poll_interval_ms = conf.poll_interval_ms.unwrap_or(1000);
     if poll_interval_ms < 100 {
-        return Err(SourceReason::other("postgres.poll_interval_ms must be >= 100".into()).into());
+        return Err(SourceReason::other(
+            "postgres.poll_interval_ms must be >= 100",
+        ));
     }
     let error_backoff_ms = conf.error_backoff_ms.unwrap_or(2000);
     if error_backoff_ms < 200 {
-        return Err(SourceReason::other("postgres.error_backoff_ms must be >= 200".into()).into());
+        return Err(SourceReason::other(
+            "postgres.error_backoff_ms must be >= 200",
+        ));
     }
 
     validate_source_cursor_type_and_start_from(
@@ -248,7 +254,7 @@ fn validate_postgres_source_conf(conf: &PostgresConf) -> SourceResult<()> {
         conf.start_from.as_deref(),
         conf.start_from_format.as_deref(),
     )
-    .map_err(|err| SourceReason::other(err))?;
+    .map_err(|err| SourceReason::other(err.to_string()))?;
 
     Ok(())
 }
@@ -262,16 +268,16 @@ fn build_postgres_sink_conf(spec: &SinkSpec) -> SinkResult<(PostgresConf, Vec<St
 
     let endpoint = conf.endpoint.trim();
     if endpoint.is_empty() {
-        return Err(SinkReason::sink("postgres.endpoint must not be empty").into());
+        return Err(SinkReason::sink("postgres.endpoint must not be empty"));
     }
     let database = conf.database.trim();
     if database.is_empty() {
-        return Err(SinkReason::sink("postgres.database must not be empty").into());
+        return Err(SinkReason::sink("postgres.database must not be empty"));
     }
     if let Some(i) = spec.params.get("batch").and_then(Value::as_i64)
         && i <= 0
     {
-        return Err(SinkReason::sink("postgres.batch must be > 0").into());
+        return Err(SinkReason::sink("postgres.batch must be > 0"));
     }
 
     let columns = parse_columns(spec.params.get("columns"))?;
@@ -283,23 +289,23 @@ fn parse_columns(value: Option<&Value>) -> SinkResult<Vec<String>> {
         return Ok(Vec::new());
     };
     let Some(arr) = value.as_array() else {
-        return Err(SinkReason::sink("postgres.columns must be an array").into());
+        return Err(SinkReason::sink("postgres.columns must be an array"));
     };
     let mut out = Vec::with_capacity(arr.len());
     for item in arr {
         if let Some(s) = item.as_str() {
             out.push(s.to_string());
         } else {
-            return Err(SinkReason::sink("postgres.columns entries must be string").into());
+            return Err(SinkReason::sink("postgres.columns entries must be string"));
         }
     }
     Ok(out)
 }
 
-fn parse_non_negative_u64(value: &Value, field: &str) -> Result<u64, SourceReason> {
+fn parse_non_negative_u64(value: &Value, field: &str) -> Result<u64, String> {
     value
         .as_u64()
-        .ok_or_else(|| SourceReason::other(format!("{field} must be a non-negative integer")))
+        .ok_or_else(|| format!("{field} must be a non-negative integer"))
 }
 
 #[cfg(test)]
@@ -329,7 +335,11 @@ mod tests {
             .validate_spec(&spec)
             .expect_err("missing cursor_column should fail");
         assert!(
-            matches!(err.reason(), SourceReason::Other(m) if m.contains("postgres.cursor_column must not be empty"))
+            err.reason() == &SourceReason::Other
+                && err
+                    .detail()
+                    .as_deref()
+                    .is_some_and(|m| m.contains("postgres.cursor_column must not be empty"))
         );
     }
 
@@ -379,7 +389,10 @@ mod tests {
             .validate_spec(&spec)
             .expect_err("start_from_format without start_from should fail");
         assert!(
-            matches!(err.reason(), SourceReason::Other(m) if m.contains("postgres.start_from_format requires postgres.start_from"))
+            err.reason() == &SourceReason::Other
+                && err.detail().as_deref().is_some_and(
+                    |m| m.contains("postgres.start_from_format requires postgres.start_from")
+                )
         );
     }
 
@@ -399,7 +412,12 @@ mod tests {
             .validate_spec(&spec)
             .expect_err("int cursor should reject start_from_format");
         assert!(
-            matches!(err.reason(), SourceReason::Other(m) if m.contains("postgres.start_from_format is only supported for time cursor"))
+            err.reason() == &SourceReason::Other
+                && err
+                    .detail()
+                    .as_deref()
+                    .is_some_and(|m| m
+                        .contains("postgres.start_from_format is only supported for time cursor"))
         );
     }
 }

@@ -11,12 +11,13 @@ use actix_web::{App, HttpRequest, HttpResponse, HttpServer, web};
 use async_trait::async_trait;
 use bytes::Bytes;
 use flate2::read::GzDecoder;
+use orion_error::prelude::SourceRawErr;
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use wp_conf_base::ConfParser;
 use wp_connector_api::{
-    CtrlRx, DataSource, SourceBatch, SourceError, SourceEvent, SourceReason, SourceResult, Tags,
+    CtrlRx, DataSource, SourceBatch, SourceEvent, SourceReason, SourceResult, Tags,
 };
 use wp_model_core::event_id::next_wp_event_id;
 use wp_model_core::raw::RawData;
@@ -100,7 +101,7 @@ impl DataSource for HttpSource {
     async fn receive(&mut self) -> SourceResult<SourceBatch> {
         match self.receiver.recv().await {
             Some(payloads) => Ok(self.build_batch(payloads)),
-            None => Err(SourceReason::Disconnect("http source channel closed".into()).into()),
+            None => Err(SourceReason::disconnect("http source channel closed")),
         }
     }
 
@@ -227,7 +228,7 @@ impl PortRuntime {
         })
         .workers(1)
         .bind(("0.0.0.0", self.port))
-        .map_err(|e| SourceReason::other(format!("bind port {}: {e}", self.port)))?
+        .source_raw_err(SourceReason::Other, format!("bind port {}", self.port))?
         .run();
 
         let handle = server.handle();
@@ -391,9 +392,9 @@ fn decode_body(body: web::Bytes, compression: CompressionKind) -> SourceResult<B
             }
             let mut decoder = GzDecoder::new(body.as_ref());
             let mut decoded = Vec::new();
-            decoder
-                .read_to_end(&mut decoded)
-                .map_err(|e| SourceReason::supplier_error(format!("gzip decompression failed: {e}")))?;
+            decoder.read_to_end(&mut decoded).map_err(|e| {
+                SourceReason::supplier_error(format!("gzip decompression failed: {e}"))
+            })?;
             Ok(Bytes::from(decoded))
         }
     }
@@ -445,12 +446,11 @@ fn parse_ndjson_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
         }
         let value: Value = serde_json::from_str(line).map_err(|e| {
             let msg = format!("invalid ndjson line {}: {e}", idx + 1);
-            SourceReason::supplier_error(msg.clone()).with_detail(msg)
+            SourceReason::supplier_error(msg)
         })?;
-        lines.push(Bytes::from(
-            serde_json::to_vec(&value)
-                .map_err(|e| SourceReason::supplier_error(format!("ndjson serialize line {}: {e}", idx + 1)))?
-        ));
+        lines.push(Bytes::from(serde_json::to_vec(&value).map_err(|e| {
+            SourceReason::supplier_error(format!("ndjson serialize line {}: {e}", idx + 1))
+        })?));
     }
 
     Ok(lines)
@@ -540,7 +540,12 @@ mod tests {
     fn invalid_ndjson_line_is_rejected() {
         let err = parse_payloads(b"{\"a\":1}\nnot-json\n", "ndjson")
             .expect_err("invalid ndjson should fail");
-        assert!(matches!(err.reason(), SourceReason::SupplierError(m) if m.contains("invalid ndjson line 2")));
+        assert_eq!(err.reason(), &SourceReason::SupplierError);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("invalid ndjson line 2"))
+        );
     }
 
     #[test]

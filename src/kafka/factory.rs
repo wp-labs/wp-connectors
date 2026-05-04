@@ -3,9 +3,9 @@ use serde_json::{Value, json};
 
 use wp_conf_base::ConfParser;
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
-    SinkHandle, SinkReason, SinkResult, SinkSpec, SourceDefProvider, SourceFactory, SourceHandle,
-    SourceMeta, SourceReason, SourceResult, SourceSvcIns, Tags,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
+    SinkReason, SinkResult, SinkSpec, SourceDefProvider, SourceFactory, SourceHandle, SourceMeta,
+    SourceReason, SourceResult, SourceSvcIns, Tags,
 };
 use wp_model_core::model::fmt_def::TextFmt;
 
@@ -74,7 +74,7 @@ fn parse_topics(value: Option<&Value>) -> SourceResult<Vec<String>> {
                 .map(|topic| topic.to_string())
                 .collect::<Vec<_>>();
             if topics.is_empty() {
-                return Err(SourceReason::other("kafka.topic must not be empty".into()).into());
+                return Err(SourceReason::other("kafka.topic must not be empty"));
             }
             Ok(topics)
         }
@@ -82,9 +82,7 @@ fn parse_topics(value: Option<&Value>) -> SourceResult<Vec<String>> {
             let mut topics = Vec::new();
             for value in values {
                 let Some(raw) = value.as_str() else {
-                    return Err(
-                        SourceReason::Other("kafka.topic entries must be strings".into()).into(),
-                    );
+                    return Err(SourceReason::other("kafka.topic entries must be strings"));
                 };
                 let trimmed = raw.trim();
                 if trimmed.is_empty() {
@@ -93,12 +91,12 @@ fn parse_topics(value: Option<&Value>) -> SourceResult<Vec<String>> {
                 topics.push(trimmed.to_string());
             }
             if topics.is_empty() {
-                return Err(SourceReason::other("kafka.topic must not be empty".into()).into());
+                return Err(SourceReason::other("kafka.topic must not be empty"));
             }
             Ok(topics)
         }
-        Some(_) => Err(SourceReason::Other("kafka.topic must be a string or array".into()).into()),
-        None => Err(SourceReason::Other("kafka.topic must not be empty".into()).into()),
+        Some(_) => Err(SourceReason::other("kafka.topic must be a string or array")),
+        None => Err(SourceReason::other("kafka.topic must not be empty")),
     }
 }
 
@@ -109,9 +107,7 @@ fn parse_config(value: Option<&Value>) -> SourceResult<Option<Vec<String>>> {
             let mut configs = Vec::new();
             for value in values {
                 let Some(raw) = value.as_str() else {
-                    return Err(
-                        SourceReason::Other("kafka.config entries must be strings".into()).into(),
-                    );
+                    return Err(SourceReason::other("kafka.config entries must be strings"));
                 };
                 let trimmed = raw.trim();
                 if trimmed.is_empty() {
@@ -133,7 +129,9 @@ fn parse_config(value: Option<&Value>) -> SourceResult<Option<Vec<String>>> {
                 Ok(Some(vec![trimmed.to_string()]))
             }
         }
-        Some(_) => Err(SourceReason::Other("kafka.config must be a string or array".into()).into()),
+        Some(_) => Err(SourceReason::other(
+            "kafka.config must be a string or array",
+        )),
     }
 }
 
@@ -170,7 +168,7 @@ fn parse_sink_config(value: Option<&Value>) -> SinkResult<Option<Vec<String>>> {
             let mut configs = Vec::new();
             for value in values {
                 let Some(raw) = value.as_str() else {
-                    return Err(SinkReason::sink("kafka.config entries must be strings").into());
+                    return Err(SinkReason::sink("kafka.config entries must be strings"));
                 };
                 let trimmed = raw.trim();
                 if trimmed.is_empty() {
@@ -192,7 +190,7 @@ fn parse_sink_config(value: Option<&Value>) -> SinkResult<Option<Vec<String>>> {
                 Ok(Some(vec![trimmed.to_string()]))
             }
         }
-        Some(_) => Err(SinkReason::sink("kafka.config must be a string or array").into()),
+        Some(_) => Err(SinkReason::sink("kafka.config must be a string or array")),
     }
 }
 
@@ -202,7 +200,7 @@ fn parse_sink_fmt(value: Option<&Value>) -> SinkResult<TextFmt> {
         Some(Value::String(raw)) => {
             let trimmed = raw.trim();
             if trimmed.is_empty() {
-                return Err(SinkReason::sink("kafka.fmt must not be empty").into());
+                return Err(SinkReason::sink("kafka.fmt must not be empty"));
             }
             let ok = matches!(
                 trimmed,
@@ -217,7 +215,7 @@ fn parse_sink_fmt(value: Option<&Value>) -> SinkResult<TextFmt> {
             }
             Ok(TextFmt::from(trimmed))
         }
-        Some(_) => Err(SinkReason::sink("kafka.fmt must be a string").into()),
+        Some(_) => Err(SinkReason::sink("kafka.fmt must be a string")),
     }
 }
 
@@ -244,9 +242,8 @@ impl wp_connector_api::SourceFactory for KafkaSourceFactory {
         let mut meta_tags = Tags::from_parse(&spec.tags);
         let access_source = spec.kind.clone();
         meta_tags.set(WP_SRC_VAL, access_source);
-        let source = KafkaSource::new(spec.name.clone(), meta_tags.clone(), &group_id, &conf)
-            .await
-            .map_err(|err| SourceReason::other(err))?;
+        let source =
+            KafkaSource::new(spec.name.clone(), meta_tags.clone(), &group_id, &conf).await?;
 
         let mut meta = SourceMeta::new(spec.name.clone(), spec.kind.clone());
         meta.tags = meta_tags;
@@ -270,9 +267,7 @@ impl SinkFactory for KafkaSinkFactory {
 
     async fn build(&self, spec: &SinkSpec, _ctx: &SinkBuildCtx) -> SinkResult<SinkHandle> {
         let (conf, fmt) = build_kafka_sink_conf_from_spec(spec)?;
-        let sink = KafkaSink::from_conf(&conf, fmt).await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!("init kafka sink failed: {err}")))
-        })?;
+        let sink = KafkaSink::from_conf(&conf, fmt).await?;
         Ok(SinkHandle::new(Box::new(sink)))
     }
 }
@@ -401,7 +396,12 @@ mod tests {
         let spec = build_source_spec(params);
 
         let err = build_kafka_conf_from_spec(&spec).expect_err("topic missing");
-        assert!(matches!(err.reason(), SourceReason::Other(m) if m.contains("kafka.topic")));
+        assert_eq!(err.reason(), &SourceReason::Other);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("kafka.topic"))
+        );
     }
 
     #[test]
@@ -463,7 +463,12 @@ mod tests {
         let spec = build_sink_spec(params);
 
         let err = build_kafka_sink_conf_from_spec(&spec).expect_err("invalid fmt");
-        assert!(matches!(err.reason(), SinkReason::Sink(m) if m.contains("invalid fmt")));
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("invalid fmt"))
+        );
     }
 
     #[test]

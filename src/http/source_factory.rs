@@ -72,7 +72,9 @@ fn required_port(spec: &SourceSpec, key: &str) -> SourceResult<u16> {
         .ok_or_else(|| SourceReason::other(format!("http.{key} must be an integer")))?;
 
     if port == 0 || port > u16::MAX as u64 {
-        return Err(SourceReason::other(format!("http.{key} must be in 1..=65535")));
+        return Err(SourceReason::other(format!(
+            "http.{key} must be in 1..=65535"
+        )));
     }
 
     Ok(port as u16)
@@ -123,8 +125,11 @@ mod tests {
         let err = factory
             .validate_spec(&build_spec(BTreeMap::new()))
             .expect_err("missing params should fail");
+        assert_eq!(err.reason(), &SourceReason::Other);
         assert!(
-            matches!(err.reason(), SourceReason::Other(m) if m.contains("http.port must be an integer"))
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("http.port must be an integer"))
         );
     }
 
@@ -138,8 +143,11 @@ mod tests {
         let err = factory
             .validate_spec(&spec)
             .expect_err("path without slash should fail");
+        assert_eq!(err.reason(), &SourceReason::Other);
         assert!(
-            matches!(err.reason(), SourceReason::Other(m) if m.contains("http.path must start with '/"))
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("http.path must start with '/"))
         );
     }
 

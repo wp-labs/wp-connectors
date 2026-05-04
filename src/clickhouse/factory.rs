@@ -2,8 +2,8 @@ use crate::clickhouse::{ClickHouseSink, ClickHouseSinkConfig};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory,
-    SinkHandle, SinkReason, SinkResult, SinkSpec,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
+    SinkReason, SinkResult, SinkSpec,
 };
 
 /// ClickHouse Sink 工厂，负责验证配置和构建 Sink 实例

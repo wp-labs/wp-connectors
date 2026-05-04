@@ -18,6 +18,7 @@ use crate::doris::config::DorisSinkConfig;
 use crate::utils::time_stat_utils::TimeStatUtils;
 use async_trait::async_trait;
 use bytes::Bytes;
+use orion_error::prelude::SourceRawErr;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serde::Serialize;
@@ -78,13 +79,13 @@ impl DorisSink {
     /// * `config` - Doris 连接与写入配置
     ///
     /// # Returns
-    /// * `anyhow::Result<Self>` - 成功返回初始化后的 sink
+    /// * `SinkResult<Self>` - 成功返回初始化后的 sink
     pub async fn new(config: DorisSinkConfig) -> SinkResult<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .no_proxy()
             .build()
-            .map_err(|e| SinkError::from(SinkReason::sink(format!("doris client build: {e}"))))?;
+            .source_raw_err(SinkReason::Sink, "doris client build")?;
 
         // 预先构建完整的 Stream Load URL
         let url = format!(
@@ -654,7 +655,12 @@ mod tests {
         record.append(DataField::from_digit("id", 1));
 
         let err = sink.sink_record(&record).await.unwrap_err();
-        assert!(matches!(err.reason(), SinkReason::Sink(m) if m.contains("stopped")));
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("stopped"))
+        );
     }
 
     #[tokio::test]
@@ -771,7 +777,12 @@ mod tests {
             .sink_records(vec![Arc::new(sample_record())])
             .await
             .unwrap_err();
-        assert!(matches!(err.reason(), SinkReason::Sink(m) if m.contains("type mismatch")));
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("type mismatch"))
+        );
         fail_mock.assert_calls_async(1).await;
     }
 
@@ -797,7 +808,12 @@ mod tests {
             .sink_records(vec![Arc::new(sample_record())])
             .await
             .unwrap_err();
-        assert!(matches!(err.reason(), SinkReason::Sink(m) if m.contains("partially failed")));
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("partially failed"))
+        );
         filtered_mock.assert_calls_async(1).await;
     }
 }

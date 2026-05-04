@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use orion_error::conversion::{SourceErr, SourceRawErr, ToStructError};
+use orion_error::conversion::SourceRawErr;
 use rdkafka_wrap::{KWProducer, KWProducerConf, OptionExt};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,8 +9,6 @@ use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::{DataRecord, fmt_def::TextFmt};
 
 use crate::kafka::config::KafkaSinkConf;
-
-type AnyResult<T> = anyhow::Result<T>;
 
 pub struct KafkaSink {
     pub(crate) inner: Arc<KWProducer>,
@@ -27,8 +25,9 @@ impl AsyncCtrl for KafkaSink {
     }
     async fn reconnect(&mut self) -> SinkResult<()> {
         let conf = self.inner.conf.clone();
-        self.inner =
-            Arc::new(KWProducer::new(conf).source_raw_err(SinkReason::Sink, "kafka  reconnect fail")?);
+        self.inner = Arc::new(
+            KWProducer::new(conf).source_raw_err(SinkReason::Sink, "kafka  reconnect fail")?,
+        );
         Ok(())
     }
 }
@@ -86,7 +85,7 @@ impl AsyncRecordSink for KafkaSink {
 }
 
 impl KafkaSink {
-    pub async fn from_conf(conf: &KafkaSinkConf, fmt: TextFmt) -> AnyResult<Self> {
+    pub async fn from_conf(conf: &KafkaSinkConf, fmt: TextFmt) -> SinkResult<Self> {
         let mut kc = KWProducerConf::new(&conf.brokers).set_topic_conf(
             &conf.topic,
             conf.num_partitions,
@@ -102,8 +101,12 @@ impl KafkaSink {
             }
             kc = kc.set_config(m);
         }
-        let producer = KWProducer::new(kc)?;
-        producer.create_topic().await?;
+        let producer =
+            KWProducer::new(kc).source_raw_err(SinkReason::Sink, "init kafka producer failed")?;
+        producer
+            .create_topic()
+            .await
+            .source_raw_err(SinkReason::Sink, "create kafka topic failed")?;
         Ok(Self {
             inner: Arc::new(producer),
             fmt,
