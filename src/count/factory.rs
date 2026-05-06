@@ -110,7 +110,9 @@ fn parse_u64_param(spec: &SourceSpec, key: &str) -> SourceResult<Option<u64>> {
         Some(Value::Number(number)) => number.as_u64().map(Some).ok_or_else(|| {
             SourceReason::other(format!("count.{key} must be a non-negative integer"))
         }),
-        Some(_) => Err(SourceReason::other(format!("count.{key} must be an integer")).into()),
+        Some(_) => Err(SourceReason::other(format!(
+            "count.{key} must be an integer"
+        ))),
     }
 }
 

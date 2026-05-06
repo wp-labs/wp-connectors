@@ -12,9 +12,9 @@ mod common;
 mod postgresql_common;
 
 #[cfg(feature = "external_integration")]
-#[path = "postgresql/sinks/integration_tests.rs"]
+#[path = "postgresql/integration_tests.rs"]
 mod integration_tests;
 
 #[cfg(feature = "external_performance")]
-#[path = "postgresql/sinks/performance_tests.rs"]
+#[path = "postgresql/performance_tests.rs"]
 mod performance_tests;

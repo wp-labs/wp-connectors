@@ -33,7 +33,7 @@ impl SinkFactory for HttpSinkFactory {
         if let Some(timeout) = get_u64(spec, "timeout_secs")
             && timeout == 0
         {
-            return Err(SinkReason::sink("http.timeout_secs must be > 0").into());
+            return Err(SinkReason::sink("http.timeout_secs must be > 0"));
         }
 
         // Validate format
@@ -112,7 +112,9 @@ fn validate_url_scheme(endpoint: &str) -> SinkResult<()> {
     if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
         Ok(())
     } else {
-        Err(SinkReason::sink("http.endpoint must use http or https protocol").into())
+        Err(SinkReason::sink(
+            "http.endpoint must use http or https protocol",
+        ))
     }
 }
 
@@ -125,7 +127,9 @@ fn validate_http_method(method: &str) -> SinkResult<()> {
     ) {
         Ok(())
     } else {
-        Err(SinkReason::sink("http.method must be one of GET, POST, PUT, PATCH, DELETE").into())
+        Err(SinkReason::sink(
+            "http.method must be one of GET, POST, PUT, PATCH, DELETE",
+        ))
     }
 }
 
@@ -134,10 +138,9 @@ fn validate_format(fmt: &str) -> SinkResult<()> {
     if matches!(fmt, "json" | "ndjson" | "csv" | "kv" | "raw" | "proto-text") {
         Ok(())
     } else {
-        Err(
-            SinkReason::sink("http.fmt must be one of json, ndjson, csv, kv, raw, proto-text")
-                .into(),
-        )
+        Err(SinkReason::sink(
+            "http.fmt must be one of json, ndjson, csv, kv, raw, proto-text",
+        ))
     }
 }
 
@@ -146,7 +149,9 @@ fn validate_compression(compression: &str) -> SinkResult<()> {
     if matches!(compression, "none" | "gzip") {
         Ok(())
     } else {
-        Err(SinkReason::sink("http.compression must be one of none, gzip").into())
+        Err(SinkReason::sink(
+            "http.compression must be one of none, gzip",
+        ))
     }
 }
 
@@ -157,7 +162,7 @@ fn required_string(spec: &SinkSpec, key: &str) -> SinkResult<String> {
         .and_then(Value::as_str)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| SinkReason::sink(format!("http.{key} must not be empty")).into())
+        .ok_or_else(|| SinkReason::sink(format!("http.{key} must not be empty")))
 }
 
 /// Read optional string parameter
@@ -200,14 +205,14 @@ fn parse_headers(spec: &SinkSpec) -> SinkResult<Option<HashMap<String, String>>>
                 if let Some(val_str) = value.as_str() {
                     headers.insert(key.clone(), val_str.to_string());
                 } else {
-                    return Err(
-                        SinkReason::sink(format!("http.headers.{key} must be a string")).into(),
-                    );
+                    return Err(SinkReason::sink(format!(
+                        "http.headers.{key} must be a string"
+                    )));
                 }
             }
             Ok(Some(headers))
         }
-        Some(_) => Err(SinkReason::sink("http.headers must be an object").into()),
+        Some(_) => Err(SinkReason::sink("http.headers must be an object")),
     }
 }
 

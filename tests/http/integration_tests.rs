@@ -1,10 +1,11 @@
 #![cfg(all(feature = "http", feature = "external_integration"))]
 
+use anyhow::Result;
 use wp_connectors::http::HttpSinkFactory;
 
-use wp_connector_test_utils::{
-    wp_connector_test_utils::{RuntimeResult, ShellScriptRestart, ShellScriptTool, ToolResultExt},
-    SinkIntegrationRuntime, SinkInfo,
+use crate::common::{
+    component_tools::{ShellScriptRestart, ShellScriptTool},
+    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
 };
 use crate::http_common::{
     create_http_integration_scenarios, query_http_count, wait_for_http_ready,
@@ -12,14 +13,14 @@ use crate::http_common::{
 
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
-async fn test_http_sink_full_integration() -> RuntimeResult<()> {
+async fn test_http_sink_full_integration() -> Result<()> {
     let tool = ShellScriptTool::new_with_options(
         "tests/http/component/start_server.sh",
         "tests/http/component/stop_server.sh",
         Some("tests/http/component/install_deps.sh"),
         Some("tests/http/component/wait_ready.sh"),
         ShellScriptRestart::NoRestart,
-    ).into_rt()?;
+    )?;
 
     let sink_infos = create_http_integration_scenarios()
         .into_iter()

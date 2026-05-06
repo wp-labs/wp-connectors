@@ -1,11 +1,11 @@
 #![cfg(all(feature = "victorialogs", feature = "external_integration"))]
 
-
+use anyhow::Result;
 use wp_connectors::victorialogs::VictoriaLogSinkFactory;
 
-use wp_connector_test_utils::{
-    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    SinkIntegrationRuntime, SinkInfo,
+use crate::common::{
+    component_tools::DockerComposeTool,
+    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
 };
 use crate::victorialogs_common::{
     create_vlogs_test_config, init_vlogs_state, query_vlogs_count, wait_for_vlogs_ready,
@@ -13,8 +13,8 @@ use crate::victorialogs_common::{
 
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
-async fn test_victorialogs_sink_full_integration() -> RuntimeResult<()> {
-    let docker_tool = DockerComposeTool::new("tests/victorialogs/component/docker-compose.yml").into_rt()?;
+async fn test_victorialogs_sink_full_integration() -> Result<()> {
+    let docker_tool = DockerComposeTool::new("tests/victorialogs/component/docker-compose.yml")?;
 
     let sink_info = SinkInfo::new(VictoriaLogSinkFactory, create_vlogs_test_config())
         .with_test_name("basic")

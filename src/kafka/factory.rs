@@ -57,11 +57,11 @@ fn parse_required_string(value: Option<&Value>, field: &str) -> SourceResult<Str
     if let Some(Value::String(raw)) = value {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
-            return Err(SourceReason::other(format!("{field} must not be empty")).into());
+            return Err(SourceReason::other(format!("{field} must not be empty")));
         }
         return Ok(trimmed.to_string());
     }
-    Err(SourceReason::other(format!("{field} must not be empty")).into())
+    Err(SourceReason::other(format!("{field} must not be empty")))
 }
 
 fn parse_topics(value: Option<&Value>) -> SourceResult<Vec<String>> {
@@ -139,11 +139,11 @@ fn parse_sink_required_string(value: Option<&Value>, field: &str) -> SinkResult<
     if let Some(Value::String(raw)) = value {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
-            return Err(SinkReason::sink(format!("{field} must not be empty")).into());
+            return Err(SinkReason::sink(format!("{field} must not be empty")));
         }
         return Ok(trimmed.to_string());
     }
-    Err(SinkReason::sink(format!("{field} must not be empty")).into())
+    Err(SinkReason::sink(format!("{field} must not be empty")))
 }
 
 fn parse_positive_i32(value: Option<&Value>, field: &str) -> SinkResult<Option<i32>> {
@@ -154,7 +154,7 @@ fn parse_positive_i32(value: Option<&Value>, field: &str) -> SinkResult<Option<i
                 .as_i64()
                 .ok_or_else(|| SinkReason::sink(format!("{field} must be an integer")))?;
             if i <= 0 {
-                return Err(SinkReason::sink(format!("{field} must be > 0")).into());
+                return Err(SinkReason::sink(format!("{field} must be > 0")));
             }
             Ok(Some(i as i32))
         }
@@ -210,8 +210,7 @@ fn parse_sink_fmt(value: Option<&Value>) -> SinkResult<TextFmt> {
                 return Err(SinkReason::sink(format!(
                     "invalid fmt: '{}'; allowed: json,csv,show,kv,raw,proto,proto-text",
                     trimmed
-                ))
-                .into());
+                )));
             }
             Ok(TextFmt::from(trimmed))
         }

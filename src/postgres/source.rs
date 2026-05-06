@@ -102,9 +102,16 @@ impl PostgresSource {
             "connect postgres source failed",
         )?;
 
-        let cursor_plan =
-            CursorPlan::build(&db, &config.schema, table, cursor_column, cursor_type).await?;
-        let payload_columns = query_payload_columns(&db, &config.schema, table).await?;
+        let cursor_plan = CursorPlan::build(&db, &config.schema, table, cursor_column, cursor_type)
+            .await
+            .map_err(|err| {
+                SourceReason::Other.err_detail(format!("build cursor plan failed: {err}"))
+            })?;
+        let payload_columns = query_payload_columns(&db, &config.schema, table)
+            .await
+            .map_err(|err| {
+                SourceReason::Other.err_detail(format!("query payload columns failed: {err}"))
+            })?;
         // 无时区 start_from 和 Unix 时间戳按 PostgreSQL 当前连接的 session TimeZone 解释。
         // 这里在 Source 启动时固定一次，避免运行中数据库配置变化导致首次起点语义漂移。
         let session_tz = query_session_time_zone(&db)
@@ -670,7 +677,7 @@ async fn query_payload_columns(
     db: &DatabaseConnection,
     schema: &str,
     table: &str,
-) -> AnyResult<Vec<String>> {
+) -> PgResult<Vec<String>> {
     let sql = "SELECT column_name \
           FROM information_schema.columns \
           WHERE table_schema = $1 AND table_name = $2 \
@@ -684,19 +691,26 @@ async fn query_payload_columns(
         ]),
     );
 
-    let rows = db.query_all(stmt).await?;
+    let rows = db
+        .query_all(stmt)
+        .await
+        .source_raw_err(PgReason::Database, "postgres query payload columns failed")?;
     let mut columns = Vec::with_capacity(rows.len());
     for row in rows {
-        let column_name: String = row.try_get_by_index(0)?;
+        let column_name: String = row
+            .try_get_by_index(0)
+            .source_raw_err(PgReason::Database, "postgres read column name failed")?;
         columns.push(column_name);
     }
 
     if columns.is_empty() {
-        anyhow::bail!(
-            "postgres source payload columns are empty: {}.{}",
-            schema,
-            table,
-        );
+        return Err(pg_err(
+            PgReason::Database,
+            format!(
+                "postgres source payload columns are empty: {}.{}",
+                schema, table
+            ),
+        ));
     }
 
     Ok(columns)

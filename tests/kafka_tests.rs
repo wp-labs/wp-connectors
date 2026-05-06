@@ -12,13 +12,9 @@ mod common;
 mod kafka_common;
 
 #[cfg(feature = "external_integration")]
-#[path = "kafka/sinks/integration_tests.rs"]
+#[path = "kafka/integration_tests.rs"]
 mod integration_tests;
 
-#[cfg(feature = "external_integration")]
-#[path = "kafka/sources/source_integration_tests.rs"]
-mod source_integration_tests;
-
 #[cfg(feature = "external_performance")]
-#[path = "kafka/sinks/performance_tests.rs"]
+#[path = "kafka/performance_tests.rs"]
 mod performance_tests;

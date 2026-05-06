@@ -1,12 +1,12 @@
 #![cfg(all(feature = "doris", feature = "external_integration"))]
 //! Integration tests for Doris sink using the new integration test framework.
 
-
+use anyhow::Result;
 use wp_connectors::doris::DorisSinkFactory;
 
-use wp_connector_test_utils::{
-    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    SinkIntegrationRuntime, SinkInfo,
+use crate::common::{
+    component_tools::DockerComposeTool,
+    sink::{integration_runtime::SinkIntegrationRuntime, sink_info::SinkInfo},
 };
 use crate::doris_common::{
     create_doris_test_config, init_doris_database, query_table_count, wait_for_doris_sink_ready,
@@ -16,9 +16,9 @@ use crate::doris_common::{
 /// 运行测试:
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
-async fn test_doris_sink_full_integration() -> RuntimeResult<()> {
+async fn test_doris_sink_full_integration() -> Result<()> {
     // 1. 创建 Docker Compose 工具
-    let docker_tool = DockerComposeTool::new("tests/doris/component/integration_tests.yml").into_rt()?;
+    let docker_tool = DockerComposeTool::new("tests/doris/component/integration_tests.yml")?;
 
     // 2. 创建 Sink 集成测试信息
     let sink_info = SinkInfo::new(DorisSinkFactory, create_doris_test_config())

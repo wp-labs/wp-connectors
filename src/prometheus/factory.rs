@@ -25,7 +25,7 @@ impl SinkFactory for PrometheusFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if endpoint.trim().is_empty() {
-            return Err(SinkReason::sink("prometheus.endpoint must not be empty").into());
+            return Err(SinkReason::sink("prometheus.endpoint must not be empty"));
         }
         Ok(())
     }

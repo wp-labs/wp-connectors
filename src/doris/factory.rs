@@ -24,28 +24,28 @@ impl SinkFactory for DorisSinkFactory {
         // 验证 endpoint 格式
         let endpoint = required_param(spec, "endpoint")?;
         if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
-            return Err(
-                SinkReason::sink("doris.endpoint must start with http:// or https://").into(),
-            );
+            return Err(SinkReason::sink(
+                "doris.endpoint must start with http:// or https://",
+            ));
         }
 
         // 验证 timeout
         if let Some(timeout) = get_u64(spec, "timeout_secs")
             && timeout == 0
         {
-            return Err(SinkReason::sink("doris.timeout_secs must be > 0").into());
+            return Err(SinkReason::sink("doris.timeout_secs must be > 0"));
         }
 
         if let Some(max_retries) = get_i64(spec, "max_retries")
             && max_retries < -1
         {
-            return Err(SinkReason::sink("doris.max_retries must be >= -1").into());
+            return Err(SinkReason::sink("doris.max_retries must be >= -1"));
         }
 
         if let Some(retries) = get_i64(spec, "retries")
             && retries < -1
         {
-            return Err(SinkReason::sink("doris.retries must be >= -1").into());
+            return Err(SinkReason::sink("doris.retries must be >= -1"));
         }
 
         Ok(())
@@ -115,7 +115,7 @@ fn ensure_not_empty(spec: &SinkSpec, key: &str) -> SinkResult<()> {
         .trim()
         .to_string();
     if value.is_empty() {
-        return Err(SinkReason::sink(format!("doris.{key} must not be empty")).into());
+        return Err(SinkReason::sink(format!("doris.{key} must not be empty")));
     }
     Ok(())
 }
@@ -127,7 +127,7 @@ fn required_param(spec: &SinkSpec, key: &str) -> SinkResult<String> {
         .and_then(Value::as_str)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| SinkReason::sink(format!("doris.{key} must not be empty")).into())
+        .ok_or_else(|| SinkReason::sink(format!("doris.{key} must not be empty")))
 }
 
 /// 读取可选字符串参数。
@@ -153,7 +153,7 @@ fn parse_u64_param(spec: &SinkSpec, keys: &[&str]) -> SinkResult<Option<u64>> {
     for key in keys {
         if let Some(value) = get_u64(spec, key) {
             if value == 0 {
-                return Err(SinkReason::sink(format!("doris.{key} must be > 0")).into());
+                return Err(SinkReason::sink(format!("doris.{key} must be > 0")));
             }
             return Ok(Some(value));
         }
@@ -183,9 +183,10 @@ fn parse_headers(spec: &SinkSpec) -> SinkResult<Option<HashMap<String, String>>>
             if let Some(s) = v.as_str() {
                 headers.insert(k.clone(), s.to_string());
             } else {
-                return Err(
-                    SinkReason::sink(format!("doris.headers.{} must be a string", k)).into(),
-                );
+                return Err(SinkReason::sink(format!(
+                    "doris.headers.{} must be a string",
+                    k
+                )));
             }
         }
         return Ok(Some(headers));

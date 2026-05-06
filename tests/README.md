@@ -1,133 +1,95 @@
 # Tests Guide
 
-`tests/` 目录现在提供两套通用框架：
-
-- Sink 集成测试和性能测试框架
-- Source 集成测试框架
-
-它们复用相同的外部依赖管理能力，把 connector 测试统一收敛到相同目录结构和运行方式中。
+`tests/` 目录提供了一套统一的 sink 集成测试和性能测试框架，用来复用外部依赖管理、sink 构建、数据发送、结果校验和性能统计逻辑。
 
 这套框架的目标是：
 
 - 让不同 connector 的测试结构保持一致
-- 让集成测试可以稳定接入 CI 或本地手动执行
-- 让开发者新增测试时只需要关心参数、初始化、输入动作和结果校验
+- 让集成测试可以稳定接入 CI
+- 让开发者新增 sink 测试时只需要关心测试参数、初始化逻辑和就绪检查
 
 ## 目录结构
 
 ```text
 tests/
-├── common/
-│   ├── component_tools.rs      # 外部组件生命周期管理
-│   ├── sink/
-│   │   ├── integration_runtime.rs
-│   │   ├── performance_runtime.rs
-│   │   └── sink_info.rs
-│   └── source/
-│       ├── integration_runtime.rs
-│       ├── mod.rs
-│       └── source_info.rs
-├── kafka/
-│   ├── common.rs
-│   ├── component/
-│   │   └── docker-compose.yml
-│   ├── sinks/
-│   │   ├── integration_tests.rs
-│   │   └── performance_tests.rs
-│   └── sources/
-│       └── source_integration_tests.rs
-├── doris/
-│   ├── common.rs
-│   ├── sinks/
-│   │   ├── integration_tests.rs
-│   │   └── performance_tests.rs
-│   └── sources/
-│       └── .gitkeep
-├── clickhouse/
-│   ├── common.rs
-│   ├── sinks/
-│   └── sources/
-├── http/
-│   ├── common.rs
-│   ├── component/
-│   ├── sinks/
-│   └── sources/
-├── *_tests.rs                  # 各 connector 的测试入口
-└── README.md
+├── common/    # 通用工具
+│   ├── component_tools.rs  # 外部组件相关工具
+│   └── sink/
+│       ├── integration_runtime.rs  # 集成测试运行时
+│       ├── performance_runtime.rs  # 性能测试运行时
+│       └── sink_info.rs            # sink描述信息
+├── doris/       # Doris 测试相关配置
+├── clickhouse/  # ClickHouse 测试相关配置
+├── elasticsearch/  # Elasticsearch 测试相关配置
+├── http/        # HTTP 测试相关配置
+│   └── .run/    # 运行时文件目录，例如 pid 和日志
+├── doris_tests.rs
+├── clickhouse_tests.rs
+├── elasticsearch_tests.rs
+└── http_tests.rs
 ```
-
-说明：
-
-- `tests/<connector>/sinks/` 用于放置 sink 集成测试和性能测试
-- `tests/<connector>/sources/` 用于放置 source 集成测试
-- 即使某个 connector 暂时没有 source 测试，也建议保留 `sources/` 目录，方便后续扩展
-- `tests/<connector>/common.rs` 用于放该 connector 的公共配置、初始化逻辑和辅助函数
 
 ## 框架概览
 
 ### CI 集成
 
-- 集成测试会被纳入 CI 或单独手动执行
+- 集成测试会被纳入 CI
+- CI 会将普通单元测试和集成测试拆开执行，方便分别观察稳定性和失败原因
 - 性能测试默认使用 `#[ignore]`，不会进入普通 CI
-- Source 集成测试默认也使用 `#[ignore]`，按需单独运行
 
-### 通用组件工具
+### 开发者如何编写测试
 
-所有外部依赖都通过 `ComponentTool` 管理，负责：
-
-- `pull_dependencies()`
-- `up()`
-- `down()`
-- `wait_started()`
-- `restart()`
-- `setup_and_up()`
-
-可选实现：
-
-- `DockerComposeTool`
-- `ShellScriptTool`
-
-## Sink 测试框架
-
-### 开发者需要准备的对象
-
-新增一个 sink 测试时，通常只需要准备三类内容：
+开发者编写一个新的 sink 测试时，通常只需要准备三类内容：
 
 1. `ComponentTool`
+   - 描述测试依赖环境如何启动、停止、等待启动完成和重启
+   - 可以选择 `DockerComposeTool`
+   - 也可以选择 `ShellScriptTool`
 2. `SinkInfo`
-3. 对应运行时：
-   - `SinkIntegrationRuntime`：集成测试
-   - `SinkPerformanceRuntime`：性能测试
+   - 描述使用哪个 `SinkFactory`
+   - Sink的连接参数 `ParamMap`
+   - 可选配置测试名称 `test_name`
+   - 配置初始化逻辑 `init`
+   - 如有需要，配置数量校验逻辑 `count_fn`
+   - 如有需要，可配置 sink 级 `wait_ready`
+3. 运行时
+   - 集成测试使用 `SinkIntegrationRuntime`
+   - 性能测试使用 `SinkPerformanceRuntime`
 
-### Sink 集成测试
+也就是说，测试文件本身只需要“组装对象并调用 `run()`”，通用执行流程由框架负责。
 
-文件位置约定：
+## 集成测试
 
-- `tests/<connector>/sinks/integration_tests.rs`
+### 编写流程
 
-编写流程：
-
-1. 如有公共逻辑，抽到 `tests/<connector>/common.rs`
-2. 创建 `ComponentTool`
-3. 构造 `SinkInfo`
-4. 按需配置 `init`、`wait_ready`、`count_fn`、`test_name`
-5. 创建 `SinkIntegrationRuntime` 并执行 `run(true)`
+1. 在 `tests/<connector>/` 下创建 `integration_tests.rs`
+2. 如果有公共初始化逻辑，抽到 `tests/<connector>/common.rs`
+3. 创建 `ComponentTool`
+4. 构造 `SinkInfo`
+5. 配置 `count_fn`，
+6. 并按需补充 `init`、`test_name` 和 `wait_ready`
+7. 创建 `SinkIntegrationRuntime` 并执行 `run()`
 
 示例：
 
 ```rust
-let component_tool = DockerComposeTool::new("tests/doris/component/docker-compose.yml")?;
-let sink_info = SinkInfo::new(DorisSinkFactory, create_doris_test_config())
+let component_tool = DockerComposeTool::new("tests/doris/integration_tests.yml")?;
+let sink_info = SinkInfo::new(
+    DorisSinkFactory,
+    create_doris_test_config(),
+)
     .with_test_name("basic")
     .with_async_count_fn(|_params| async { query_table_count().await })
     .with_async_init(|| async { init_doris_database().await })
     .with_async_wait_ready(|_params| async { wait_for_doris_ready().await });
 
 let runtime = SinkIntegrationRuntime::new(component_tool, vec![sink_info]);
-runtime.run(true).await?;
+runtime.run().await?;
 ```
 
-统一执行流程：
+### 执行流程
+
+集成测试框架会统一完成这些事情：
 
 - 拉起测试依赖环境
 - 初始化测试资源
@@ -137,27 +99,27 @@ runtime.run(true).await?;
 - 执行一次重启后的可用性验证
 - 清理环境
 
-### Sink 性能测试
+## 性能测试
 
-文件位置约定：
+### 编写流程
 
-- `tests/<connector>/sinks/performance_tests.rs`
-
-编写流程：
-
-1. 复用同目录的 `common.rs`
-2. 创建 `ComponentTool`
-3. 构造 `SinkInfo`
-4. 按需配置 `count_fn`、`init`、`wait_ready`、`test_name`
-5. 创建 `SinkPerformanceConfig`
-6. 创建 `SinkPerformanceRuntime` 并执行 `run()`
-7. 给测试打上 `#[ignore]`
+1. 在 `tests/<connector>/` 下创建 `performance_tests.rs`
+2. 复用同目录下已有的 `common.rs`
+3. 创建 `ComponentTool`
+4. 构造 `SinkInfo`
+5. 如有需要配置 `count_fn`，并按需补充 `init`、`test_name` 和 `wait_ready`
+6. 创建 `SinkPerformanceConfig`
+7. 创建 `SinkPerformanceRuntime` 并执行 `run()`
+8. 给测试打上 `#[ignore]`
 
 示例：
 
 ```rust
-let component_tool = DockerComposeTool::new("tests/doris/component/docker-compose.yml")?;
-let sink_info = SinkInfo::new(DorisSinkFactory, create_doris_test_config())
+let component_tool = DockerComposeTool::new("tests/doris/performance_tests.yml")?;
+let sink_info = SinkInfo::new(
+    DorisSinkFactory,
+    create_doris_test_config(),
+)
     .with_test_name("baseline")
     .with_async_count_fn(|_params| async { query_table_count().await })
     .with_async_init(|| async { init_doris_database().await })
@@ -172,125 +134,83 @@ let runtime = SinkPerformanceRuntime::new(component_tool, vec![sink_info], confi
 runtime.run().await?;
 ```
 
-统一执行流程：
+### 执行流程
+
+性能测试框架会统一完成这些事情：
 
 - 拉起测试依赖环境
 - 初始化测试资源
 - 并发创建多个 sink 和 Tokio 任务
 - 按批次持续发送数据
 - 打印吞吐、CPU、内存等运行指标
-- 如配置了 `count_fn`，则在结束后做数量校验；未配置时跳过
+- 如配置了 `count_fn`，则在结束后做数量校验；未配置时会跳过该检查
 - 清理环境
 
-## Source 集成测试框架
+## Common 工具介绍
 
-### 设计原则
+### `ComponentTool`
 
-Source 集成测试统一采用下面的黑盒流程：
+`ComponentTool` 是统一的外部组件生命周期抽象，负责：
 
-1. 启动外部组件
-2. 等待组件和 connector 就绪
-3. 执行初始化逻辑
-4. 构建 `SourceFactory`
-5. 执行一次输入动作 `input`
-6. 在固定超时窗口内循环调用 `receive()` 收集事件
-7. 超时后统一执行断言 `assert`
-8. 如开启重启验证，则重启后重复一次
+- `pull_dependencies()`
+- `up()`
+- `down()`
+- `wait_started()`
+- `restart()`
+- `setup_and_up()`
 
-当前 Source 框架不区分 push / pull 型 connector，也不按 EOF 或条数提前结束，而是统一使用时间窗口收集数据。
+### `DockerComposeTool`
 
-### 相关对象
-
-- `SourceInfo`
-  - 描述单个 source 测试用例
-  - 关键配置包括：`factory`、`params`、`test_name`、`init`、`wait_ready`、`input`、`collect_timeout`、`poll_interval`、`assert`、`restart_verification`
-- `SourceIntegrationRuntime`
-  - 负责通用执行流程
-- `SourceRunContext`
-  - 在断言阶段提供完整上下文，包含：`received_events`、`receive_attempts`、`idle_count`、`eof_count`、`elapsed`、`phase` 等
-
-### 文件位置约定
-
-- `tests/<connector>/sources/source_integration_tests.rs`
-
-如后续某个 connector 有多个 source 场景，也可以继续拆成多个 source 测试文件，但建议都放在 `sources/` 下。
-
-### 编写流程
-
-1. 在 `tests/<connector>/common.rs` 中准备输入动作、就绪检查和初始化逻辑
-2. 在 `tests/<connector>/sources/source_integration_tests.rs` 中创建 `SourceInfo`
-3. 配置：
-   - `with_async_wait_ready(...)`
-   - `with_async_init(...)`
-   - `with_async_input(...)`
-   - `with_collect_timeout(...)`
-   - `with_poll_interval(...)`
-   - `with_async_assert(...)`
-   - `with_restart_verification(...)`
-4. 创建 `SourceIntegrationRuntime` 并执行 `run(true)`
-
-### 示例
-
-下面是当前 Kafka Source 的简化示例：
+`DockerComposeTool` 适合依赖 Docker Compose 的测试场景。
 
 ```rust
-let docker_tool = DockerComposeTool::new("tests/kafka/component/docker-compose.yml")?;
-
-let params = create_kafka_source_config(unique_kafka_topic("wp_kafka_source_basic"));
-let source_info = SourceInfo::new(KafkaSourceFactory, params.clone())
-    .with_test_name("basic")
-    .with_async_wait_ready(|_params| async move { wait_for_kafka_ready().await })
-    .with_async_init(move || {
-        let params = params.clone();
-        async move { init_kafka_topic_with_params(params).await }
-    })
-    .with_async_input(|params| async move {
-        produce_topic_messages(
-            params,
-            vec![
-                br#"{"seq":1,"case":"basic"}"#.to_vec(),
-                br#"{"seq":2,"case":"basic"}"#.to_vec(),
-            ],
-        )
-        .await
-    })
-    .with_collect_timeout(Duration::from_secs(5))
-    .with_poll_interval(Duration::from_millis(100))
-    .with_async_assert(|ctx| async move {
-        anyhow::ensure!(ctx.received_events.len() >= 2, "收集到的事件不足");
-        Ok(())
-    });
-
-let runtime = SourceIntegrationRuntime::new(docker_tool, vec![source_info]);
-runtime.run(true).await?;
+let tool = DockerComposeTool::new("tests/doris/integration_tests.yml")?;
 ```
 
-### Source 运行时行为
+### `ShellScriptTool`
 
-`SourceIntegrationRuntime` 会统一处理：
+`ShellScriptTool` 适合通过 shell 脚本管理外部测试依赖。
 
-- 启动组件
-- build source
-- 调用输入动作
-- 在超时窗口内轮询 `receive()`
-- 将 `NotData` 和 `EOF` 视为可接受的空闲信号
-- 将其它错误视为测试失败
-- 关闭所有 `SourceHandle`
-- 把收集结果交给断言函数
+```rust
+let tool = ShellScriptTool::new_with_options(
+    "tests/http/start_server.sh",
+    "tests/http/stop_server.sh",
+    Some("tests/http/install_deps.sh"),
+    Some("tests/http/wait_ready.sh"),
+    ShellScriptRestart::Default,
+)?;
+```
+
+说明：
+
+- `start` / `stop` 脚本是必选项
+- `install` / `ready` 是可选项
+- `restart` 使用 `ShellScriptRestart::Default`、`ShellScriptRestart::Script(...)`、`ShellScriptRestart::NoRestart`
+
+### `SinkInfo`
+
+`SinkInfo` 用于描述单个 sink 测试用例，包含：
+
+- `factory`
+- `params`
+- 可选 `test_name`
+- 可选 `init`
+- 可选 `count_fn`
+- 可选 `wait_ready`
+
+如果配置了 `test_name`，运行时会在遍历开始时输出 `kind + test_name + 编号` 形式的标识。
 
 ## 当前示例
 
-目前仓库已经提供：
+目前这套框架已经提供了多个示例：
 
-- Doris sink 集成测试和性能测试
-- ClickHouse sink 集成测试和性能测试
-- Elasticsearch sink 集成测试和性能测试
-- PostgreSQL sink 集成测试和性能测试
-- VictoriaLogs sink 集成测试和性能测试
-- HTTP sink 集成测试和性能测试
-- MySQL sink 集成测试和性能测试
-- Kafka sink 集成测试和性能测试
-- Kafka source 集成测试
+- Doris 的集成测试和性能测试
+- ClickHouse 的集成测试和性能测试
+- Elasticsearch 的集成测试和性能测试
+- PostgreSQL 的集成测试和性能测试
+- VictoriaLogs 的集成测试和性能测试
+- HTTP sink 的集成测试和性能测试
+- MySQL sink 的集成测试和性能测试
 
 说明：
 
@@ -301,60 +221,57 @@ runtime.run(true).await?;
 ## 常用命令
 
 ```bash
-# 全部 sink 集成测试
-cargo test --tests --features external_integration integration_tests:: -- --nocapture --ignored --test-threads=1
+# 全部集成测试
+cargo test --tests --features external_integration integration_tests:: -- --nocapture --ignored
 
-# 全部 sink 性能测试
+# 全部性能测试
 cargo test --release --tests --features external_performance performance_tests:: -- --nocapture --ignored
 
-# Kafka source 集成测试
-cargo test --package wp-connectors --test kafka_tests --features kafka,external_integration source_integration_tests::test_kafka_source_basic_integration -- --exact --nocapture --ignored
-
-# Kafka sink 集成测试
-cargo test --package wp-connectors --test kafka_tests --features kafka,external_integration integration_tests::test_kafka_sink_full_integration -- --exact --nocapture --ignored
-
-# Kafka sink 性能测试
-cargo test --package wp-connectors --test kafka_tests --features kafka,external_performance performance_tests::test_kafka_sink_performance -- --exact --nocapture --ignored
-
-# Doris sink 集成测试
+# Doris 集成测试
 cargo test --package wp-connectors --test doris_tests integration_tests::test_doris_sink_full_integration --features doris,external_integration -- --exact --nocapture --ignored
 
-# Doris sink 性能测试
+# Doris 性能测试
 cargo test --package wp-connectors --test doris_tests performance_tests::test_doris_sink_performance --features doris,external_performance -- --exact --nocapture --ignored
 
-# HTTP sink 集成测试
+# HTTP 集成测试
 cargo test --package wp-connectors --test http_tests --features http,external_integration integration_tests::test_http_sink_full_integration -- --exact --nocapture --ignored
 
-# HTTP sink 性能测试
+# HTTP 性能测试
 cargo test --package wp-connectors --test http_tests --features http,external_performance performance_tests::test_http_sink_performance -- --exact --nocapture --ignored
 
-# ClickHouse sink 集成测试
+# Kafka 集成测试
+cargo test --package wp-connectors --test kafka_tests --features kafka,external_integration integration_tests::test_kafka_sink_full_integration -- --exact --nocapture --ignored
+
+# Kafka 性能测试
+cargo test --package wp-connectors --test kafka_tests --features kafka,external_performance performance_tests::test_kafka_sink_performance -- --exact --nocapture --ignored
+
+# ClickHouse 集成测试
 cargo test --package wp-connectors --test clickhouse_tests --features clickhouse,external_integration integration_tests::test_clickhouse_sink_full_integration -- --exact --nocapture --ignored
 
-# ClickHouse sink 性能测试
+# ClickHouse 性能测试
 cargo test --package wp-connectors --test clickhouse_tests --features clickhouse,external_performance performance_tests::test_clickhouse_sink_performance -- --exact --nocapture --ignored
 
-# MySQL sink 集成测试
+# MySQL 集成测试
 cargo test --package wp-connectors --test mysql_tests --features mysql,external_integration integration_tests::test_mysql_sink_full_integration -- --exact --nocapture --ignored
 
-# MySQL sink 性能测试
+# MySQL 性能测试
 cargo test --package wp-connectors --test mysql_tests --features mysql,external_performance performance_tests::test_mysql_sink_performance -- --exact --nocapture --ignored
 
-# Elasticsearch sink 集成测试
+# Elasticsearch 集成测试
 cargo test --package wp-connectors --test elasticsearch_tests --features elasticsearch,external_integration integration_tests::test_elasticsearch_sink_full_integration -- --exact --nocapture --ignored
 
-# Elasticsearch sink 性能测试
+# Elasticsearch 性能测试
 cargo test --package wp-connectors --test elasticsearch_tests --features elasticsearch,external_performance performance_tests::test_elasticsearch_sink_performance -- --exact --nocapture --ignored
 
-# PostgreSQL sink 集成测试
+# PostgreSQL 集成测试
 cargo test --package wp-connectors --test postgresql_tests --features postgres,external_integration integration_tests::test_postgresql_sink_full_integration -- --exact --nocapture --ignored
 
-# PostgreSQL sink 性能测试
+# PostgreSQL 性能测试
 cargo test --package wp-connectors --test postgresql_tests --features postgres,external_performance performance_tests::test_postgresql_sink_performance -- --exact --nocapture --ignored
 
-# VictoriaLogs sink 集成测试
+# VictoriaLogs 集成测试
 cargo test --package wp-connectors --test victorialogs_tests --features victorialogs,external_integration integration_tests::test_victorialogs_sink_full_integration -- --exact --nocapture --ignored
 
-# VictoriaLogs sink 性能测试
+# VictoriaLogs 性能测试
 cargo test --package wp-connectors --test victorialogs_tests --features victorialogs,external_performance performance_tests::test_victorialogs_sink_performance -- --exact --nocapture --ignored
 ```
