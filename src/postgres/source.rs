@@ -1760,12 +1760,12 @@ mod tests {
     fn load_checkpoint_rejects_invalid_int_cursor_value() {
         let path = temp_checkpoint_path("invalid-int");
         let content = r#"{
-  "version": 1,
-  "cursor_type": "int",
-  "cursor_column": "id",
-  "last_cursor_raw": "not-an-int",
-  "updated_at": "2026-04-16T00:00:00Z"
-}"#;
+        "version": 1,
+        "cursor_type": "int",
+        "cursor_column": "id",
+        "last_cursor_raw": "not-an-int",
+        "updated_at": "2026-04-16T00:00:00Z"
+        }"#;
         std::fs::write(&path, content).unwrap();
 
         let cursor_plan = integer_cursor_plan();
