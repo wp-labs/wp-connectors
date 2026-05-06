@@ -1,0 +1,15 @@
+!Job
+name: flow
+tasks:
+- name: config
+  begin: 2026-04-22 10:26:47
+  stdout: ''
+  result: !Ok
+    running_time: ''
+  actions: []
+- name: config
+  begin: 2026-04-22 10:26:47
+  stdout: ''
+  result: !Ok
+    running_time: ''
+  actions: []

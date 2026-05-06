@@ -25,7 +25,7 @@ pub struct CountSink {
 }
 
 impl CountSink {
-    pub async fn new() -> anyhow::Result<Self> {
+    pub async fn new() -> SinkResult<Self> {
         // 获取当前 tokio 任务 ID
         let task_id = tokio::task::try_id()
             .map(|id| format!("{:?}", id))
@@ -106,5 +106,5 @@ impl AsyncRawDataSink for CountSink {
 
 /// 统一封装 sink 层错误。
 fn sink_error(msg: impl Into<String>) -> SinkError {
-    SinkError::from(SinkReason::Sink(msg.into()))
+    SinkReason::sink(msg)
 }

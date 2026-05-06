@@ -8,10 +8,10 @@ use actix_web::http::{
     header::{CONTENT_ENCODING, CONTENT_TYPE},
 };
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, web};
-use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
 use flate2::read::GzDecoder;
+use orion_error::prelude::{SourceErr, SourceRawErr};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::{Mutex, RwLock, mpsc};
@@ -74,7 +74,7 @@ impl HttpSource {
     pub async fn register(
         config: &HttpSourceConfig,
         sender: mpsc::Sender<Vec<Bytes>>,
-    ) -> anyhow::Result<()> {
+    ) -> SourceResult<()> {
         http_source_runtime()
             .register(config.port, config.path.clone(), sender)
             .await
@@ -101,7 +101,7 @@ impl DataSource for HttpSource {
     async fn receive(&mut self) -> SourceResult<SourceBatch> {
         match self.receiver.recv().await {
             Some(payloads) => Ok(self.build_batch(payloads)),
-            None => Err(SourceReason::Disconnect("http source channel closed".into()).into()),
+            None => Err(SourceReason::disconnect("http source channel closed")),
         }
     }
 
@@ -150,13 +150,13 @@ impl HttpSourceRuntime {
         port: u16,
         path: String,
         sender: mpsc::Sender<Vec<Bytes>>,
-    ) -> anyhow::Result<()> {
+    ) -> SourceResult<()> {
         let port_runtime = self.ensure_port_runtime(port).await?;
         let mut routes = port_runtime.routes.write().await;
         if routes.contains_key(&path) {
-            // `port + path` 是 source 的业务唯一键；重复注册直接拒绝，
-            // 否则多个 source 会收到同一路径请求，语义不明确。
-            anyhow::bail!("http source already exists for {}{}", port, path);
+            return Err(SourceReason::other(format!(
+                "http source already exists for {port}{path}"
+            )));
         }
         routes.insert(path, RouteTarget { sender });
         Ok(())
@@ -188,7 +188,7 @@ impl HttpSourceRuntime {
         }
     }
 
-    async fn ensure_port_runtime(&self, port: u16) -> anyhow::Result<Arc<PortRuntime>> {
+    async fn ensure_port_runtime(&self, port: u16) -> SourceResult<Arc<PortRuntime>> {
         let mut ports = self.ports.lock().await;
         if let Some(runtime) = ports.get(&port) {
             return Ok(runtime.clone());
@@ -216,7 +216,7 @@ impl PortRuntime {
         }
     }
 
-    fn start(self: &Arc<Self>) -> anyhow::Result<()> {
+    fn start(self: &Arc<Self>) -> SourceResult<()> {
         let app_state = self.clone();
         let log_state = self.clone();
         let server = HttpServer::new(move || {
@@ -227,7 +227,8 @@ impl PortRuntime {
                 .default_service(web::to(handle_request))
         })
         .workers(1)
-        .bind(("0.0.0.0", self.port))?
+        .bind(("0.0.0.0", self.port))
+        .source_raw_err(SourceReason::Other, format!("bind port {}", self.port))?
         .run();
 
         let handle = server.handle();
@@ -288,12 +289,12 @@ async fn handle_request(
 
     let fmt = match resolve_fmt(&request, &query) {
         Ok(fmt) => fmt,
-        Err(err) => return error_response(StatusCode::UNSUPPORTED_MEDIA_TYPE, err),
+        Err(err) => return error_response(StatusCode::UNSUPPORTED_MEDIA_TYPE, err.to_string()),
     };
 
     let compression = match resolve_compression(&request, &query) {
         Ok(compression) => compression,
-        Err(err) => return error_response(StatusCode::UNSUPPORTED_MEDIA_TYPE, err),
+        Err(err) => return error_response(StatusCode::UNSUPPORTED_MEDIA_TYPE, err.to_string()),
     };
 
     let decoded = match decode_body(body, compression) {
@@ -318,7 +319,7 @@ async fn handle_request(
     }
 }
 
-fn resolve_fmt(request: &HttpRequest, query: &RequestQuery) -> Result<String, String> {
+fn resolve_fmt(request: &HttpRequest, query: &RequestQuery) -> SourceResult<String> {
     // 协议约束：请求参数优先级高于请求头，便于调用方在不改 header 的情况下做临时覆盖。
     let fmt = query
         .fmt
@@ -332,7 +333,7 @@ fn resolve_fmt(request: &HttpRequest, query: &RequestQuery) -> Result<String, St
     if matches!(fmt.as_str(), "json" | "ndjson") {
         Ok(fmt)
     } else {
-        Err(format!("unsupported fmt: {fmt}"))
+        Err(SourceReason::other(format!("unsupported fmt: {fmt}")))
     }
 }
 
@@ -355,9 +356,9 @@ fn content_type_to_fmt(value: Option<&actix_web::http::header::HeaderValue>) -> 
 fn resolve_compression(
     request: &HttpRequest,
     query: &RequestQuery,
-) -> Result<CompressionKind, String> {
+) -> SourceResult<CompressionKind> {
     // 只认 Content-Encoding，不读取 Accept-Encoding。
-    // 原因：这里处理的是“请求体已经采用何种编码”，不是“客户端希望响应怎么编码”。
+    // 原因：这里处理的是"请求体已经采用何种编码"，不是"客户端希望响应怎么编码"。
     let compression = query
         .compression
         .as_deref()
@@ -378,17 +379,16 @@ fn resolve_compression(
     match compression.as_str() {
         "none" | "identity" => Ok(CompressionKind::None),
         "gzip" => Ok(CompressionKind::Gzip),
-        _ => Err(format!("unsupported compression: {compression}")),
+        _ => Err(SourceReason::other(format!(
+            "unsupported compression: {compression}"
+        ))),
     }
 }
 
-fn decode_body(body: web::Bytes, compression: CompressionKind) -> anyhow::Result<Bytes> {
+fn decode_body(body: web::Bytes, compression: CompressionKind) -> SourceResult<Bytes> {
     match compression {
         CompressionKind::None => Ok(body),
         CompressionKind::Gzip => {
-            // Actix may already decode request bodies based on Content-Encoding,
-            // so only decompress when the payload still carries the gzip signature.
-            // 风险：不同框架/feature 组合对请求解压的时机可能不同，这里做兼容判断，避免二次解压失败。
             if !looks_like_gzip(body.as_ref()) {
                 return Ok(body);
             }
@@ -396,7 +396,7 @@ fn decode_body(body: web::Bytes, compression: CompressionKind) -> anyhow::Result
             let mut decoded = Vec::new();
             decoder
                 .read_to_end(&mut decoded)
-                .context("gzip decompression failed")?;
+                .source_err(SourceReason::SupplierError, "gzip decompression failed")?;
             Ok(Bytes::from(decoded))
         }
     }
@@ -406,18 +406,17 @@ fn looks_like_gzip(body: &[u8]) -> bool {
     body.len() >= 2 && body[0] == 0x1f && body[1] == 0x8b
 }
 
-fn parse_payloads(body: &[u8], fmt: &str) -> anyhow::Result<Vec<Bytes>> {
+fn parse_payloads(body: &[u8], fmt: &str) -> SourceResult<Vec<Bytes>> {
     match fmt {
         "json" => parse_json_payloads(body),
         "ndjson" => parse_ndjson_payloads(body),
-        _ => anyhow::bail!("unsupported fmt: {fmt}"),
+        _ => Err(SourceReason::other(format!("unsupported fmt: {fmt}"))),
     }
 }
 
-fn parse_json_payloads(body: &[u8]) -> anyhow::Result<Vec<Bytes>> {
-    // 业务语义：json 模式允许单对象或数组输入，统一展开成“多条记录”的内部表示，
-    // 这样 source 下游不需要再区分顶层结构。
-    let value: Value = serde_json::from_slice(body).context("invalid json payload")?;
+fn parse_json_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
+    let value: Value = serde_json::from_slice(body)
+        .source_raw_err(SourceReason::SupplierError, "invalid json payload")?;
     let values = match value {
         Value::Array(values) => values,
         other => vec![other],
@@ -428,13 +427,14 @@ fn parse_json_payloads(body: &[u8]) -> anyhow::Result<Vec<Bytes>> {
         .map(|value| {
             serde_json::to_vec(&value)
                 .map(Bytes::from)
-                .map_err(anyhow::Error::from)
+                .source_raw_err(SourceReason::SupplierError, "json serialize")
         })
         .collect()
 }
 
-fn parse_ndjson_payloads(body: &[u8]) -> anyhow::Result<Vec<Bytes>> {
-    let text = std::str::from_utf8(body).context("ndjson payload is not valid utf-8")?;
+fn parse_ndjson_payloads(body: &[u8]) -> SourceResult<Vec<Bytes>> {
+    let text = std::str::from_utf8(body)
+        .source_raw_err(SourceReason::SupplierError, "ndjson invalid utf-8")?;
     let mut lines = Vec::new();
 
     for (idx, raw_line) in text.lines().enumerate() {
@@ -442,11 +442,14 @@ fn parse_ndjson_payloads(body: &[u8]) -> anyhow::Result<Vec<Bytes>> {
         if line.is_empty() {
             continue;
         }
-        // ndjson 不做整体 JSON 包装，但每一行必须是合法 JSON。
-        // 这样能尽早把坏数据挡在入口，避免下游 parser 收到格式污染的行。
-        let value: Value = serde_json::from_str(line)
-            .with_context(|| format!("invalid ndjson line {}", idx + 1))?;
-        lines.push(Bytes::from(serde_json::to_vec(&value)?));
+        let value: Value = serde_json::from_str(line).source_raw_err(
+            SourceReason::SupplierError,
+            format!("invalid ndjson line {}", idx + 1),
+        )?;
+        lines.push(Bytes::from(serde_json::to_vec(&value).source_raw_err(
+            SourceReason::SupplierError,
+            format!("ndjson serialize line {}", idx + 1),
+        )?));
     }
 
     Ok(lines)
@@ -536,7 +539,12 @@ mod tests {
     fn invalid_ndjson_line_is_rejected() {
         let err = parse_payloads(b"{\"a\":1}\nnot-json\n", "ndjson")
             .expect_err("invalid ndjson should fail");
-        assert!(err.to_string().contains("invalid ndjson line 2"));
+        assert_eq!(err.reason(), &SourceReason::SupplierError);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("invalid ndjson line 2"))
+        );
     }
 
     #[test]

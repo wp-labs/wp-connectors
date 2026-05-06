@@ -1,6 +1,6 @@
-use orion_conf::UvsConfFrom;
+use orion_conf::ToStructError;
+
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::ToStructError;
 use serde::{Deserialize, Serialize};
 use wp_conf_base::structure::Validate;
 
@@ -18,12 +18,12 @@ pub struct KafkaSourceConf {
 impl Validate for KafkaSourceConf {
     fn validate(&self) -> OrionConfResult<()> {
         if self.brokers.trim().is_empty() {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail("kafka.brokers must not be empty"));
         }
         if self.topic.is_empty() {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail("kafka.topic must not be empty"));
         }

@@ -2,12 +2,12 @@
 
 use std::time::Duration;
 
-use anyhow::Result;
+
 use wp_connectors::kafka::KafkaSourceFactory;
 
-use crate::common::{
-    component_tools::DockerComposeTool,
-    source::{integration_runtime::SourceIntegrationRuntime, source_info::SourceInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
+    SourceIntegrationRuntime, SourceInfo,
 };
 use crate::kafka_common::{
     create_kafka_source_config, init_kafka_topic_with_params, produce_topic_messages,
@@ -16,8 +16,8 @@ use crate::kafka_common::{
 
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
-async fn test_kafka_source_basic_integration() -> Result<()> {
-    let docker_tool = DockerComposeTool::new("tests/kafka/component/docker-compose.yml")?;
+async fn test_kafka_source_basic_integration() -> RuntimeResult<()> {
+    let docker_tool = DockerComposeTool::new("tests/kafka/component/docker-compose.yml").into_rt()?;
 
     let params = create_kafka_source_config(unique_kafka_topic("wp_kafka_source_basic"));
     let source_info = SourceInfo::new(KafkaSourceFactory, params.clone())

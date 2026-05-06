@@ -12,6 +12,7 @@ use crate::elasticsearch::config::ElasticsearchSinkConfig;
 use crate::utils::fmt::{BatchFormat, fmt_bytes};
 use crate::utils::time_stat_utils::TimeStatUtils;
 use async_trait::async_trait;
+use orion_error::prelude::SourceRawErr;
 use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -64,13 +65,12 @@ impl ElasticsearchSink {
     /// # Arguments
     /// * `config` - Elasticsearch 连接与写入配置
     ///
-    /// # Returns
-    /// * `anyhow::Result<Self>` - 成功返回初始化后的 sink
-    pub async fn new(config: ElasticsearchSinkConfig) -> anyhow::Result<Self> {
+    pub async fn new(config: ElasticsearchSinkConfig) -> SinkResult<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
-            .no_proxy() // 禁用所有代理
-            .build()?;
+            .no_proxy()
+            .build()
+            .source_raw_err(SinkReason::Sink, "es client build")?;
 
         // 预先构建完整的 Bulk API URL
         let url = format!("{}/_bulk", config.endpoint());
@@ -108,7 +108,7 @@ impl ElasticsearchSink {
                 }
             });
             let action_bytes = serde_json::to_vec(&action)
-                .map_err(|e| sink_error(format!("json serialization failed for action: {}", e)))?;
+                .source_raw_err(SinkReason::Sink, "json serialization failed for action")?;
             ndjson.extend_from_slice(&action_bytes);
             ndjson.push(b'\n');
 
@@ -313,5 +313,5 @@ impl AsyncRawDataSink for ElasticsearchSink {
 
 /// 统一封装 sink 层错误
 fn sink_error(msg: impl Into<String>) -> SinkError {
-    SinkError::from(SinkReason::Sink(msg.into()))
+    SinkReason::sink(msg)
 }

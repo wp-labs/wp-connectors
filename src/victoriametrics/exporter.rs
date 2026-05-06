@@ -1,7 +1,8 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use orion_conf::StructError;
+use orion_error::prelude::SourceRawErr;
+
 use prometheus::{Encoder, TextEncoder};
 use std::sync::Arc;
 use sysinfo::System;
@@ -12,7 +13,7 @@ use wp_model_core::model::{DataRecord, Value};
 
 use super::metrics::{parse_all_stat, receive_data_stat, sink_stat, system_usage_stat};
 pub(crate) struct VictoriaMetricExporter {
-    insert_url: String,
+    write_url: String,
     client: reqwest::Client,
     flush_interval: Duration,
     stop_tx: Option<oneshot::Sender<()>>,
@@ -20,11 +21,15 @@ pub(crate) struct VictoriaMetricExporter {
     system: System,
 }
 
+fn duration_millis_i64(duration: Duration) -> i64 {
+    i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
+}
+
 impl Clone for VictoriaMetricExporter {
     fn clone(&self) -> Self {
         Self {
             system: System::new(),
-            insert_url: self.insert_url.clone(),
+            write_url: self.write_url.clone(),
             client: self.client.clone(),
             flush_interval: self.flush_interval,
             stop_tx: None,
@@ -35,12 +40,12 @@ impl Clone for VictoriaMetricExporter {
 
 impl VictoriaMetricExporter {
     pub(crate) fn new(
-        insert_url: String,
+        write_url: String,
         client: reqwest::Client,
         flush_interval: Duration,
     ) -> Self {
         Self {
-            insert_url,
+            write_url,
             flush_interval,
             stop_tx: None,
             flush_handle: None,
@@ -50,7 +55,7 @@ impl VictoriaMetricExporter {
     }
 
     pub(crate) async fn save_metric_to_victoriametric(&self, ts_ms: Option<i64>) -> SinkResult<()> {
-        Self::push_metrics(&self.client, &self.insert_url, ts_ms).await
+        Self::push_metrics(&self.client, &self.write_url, ts_ms).await
     }
 
     pub(crate) fn start_flush_task(&mut self) {
@@ -63,23 +68,24 @@ impl VictoriaMetricExporter {
         let interval = self.flush_interval;
         let handle = tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
-            // flush task 自己维护已推送的纳秒级时间戳，确保同一秒内不重复推送。
-            let mut last_pushed_sec: i64 = 0;
+            // flush task 自己维护已推送的毫秒级时间戳，避免纳秒时间戳
+            // 转 i64 后再放大导致溢出。
+            let mut last_pushed_ms: i64 = 0;
             loop {
                 tokio::select! {
                     _ = ticker.tick() => {
-                        let curr_sec = SystemTime::now()
+                        let curr_ms = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
-                            .map(|d| d.as_nanos() as i64)
+                            .map(duration_millis_i64)
                             .unwrap_or(0);
-                        if curr_sec <= last_pushed_sec {
+                        if curr_ms <= last_pushed_ms {
                             continue;
                         }
-                        last_pushed_sec = curr_sec;
+                        last_pushed_ms = curr_ms;
                         // CPU/内存统计在此统一刷新，避免在每条 DataRecord 中触发
                         // sysinfo 系统调用（flush 间隔即采样间隔）。
                         system_usage_stat(&mut runner.system);
-                        if let Err(err) = runner.save_metric_to_victoriametric(Some(curr_sec * 1000)).await {
+                        if let Err(err) = runner.save_metric_to_victoriametric(Some(curr_ms)).await {
                             error_data!("VictoriaMetric periodic push failed: {}", err);
                         }
                     }
@@ -115,7 +121,7 @@ impl VictoriaMetricExporter {
 
     async fn push_metrics(
         client: &reqwest::Client,
-        insert_url: &str,
+        write_url: &str,
         ts_ms: Option<i64>,
     ) -> SinkResult<()> {
         let encoder = TextEncoder::new();
@@ -126,10 +132,7 @@ impl VictoriaMetricExporter {
         }
         let mut buffer = Vec::new();
         if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
-            return Err(
-                StructError::from(SinkReason::Sink("prometheus encode error".to_string()))
-                    .with_detail(e.to_string()),
-            );
+            return Err(SinkReason::sink("prometheus encode error").with_detail(e.to_string()));
         }
         // 优先使用调用方提供的时间戳（来自 DataRecord.end_time），否则退回到当前时间。
         let ts = ts_ms.unwrap_or_else(|| {
@@ -139,20 +142,22 @@ impl VictoriaMetricExporter {
                 .unwrap_or(0)
         });
         // let buffer = append_timestamp_to_each_sample(&buffer, ts);
-        let url = format!("{}?time_stamp={}", insert_url, ts);
-        let response = client.post(&url).body(buffer).send().await.map_err(|e| {
-            StructError::from(SinkReason::Sink("reqwest send error".to_string()))
-                .with_detail(e.to_string())
-        })?;
+        let url = format!("{}?time_stamp={}", write_url, ts);
+        let response = client
+            .post(&url)
+            .body(buffer)
+            .send()
+            .await
+            .source_raw_err(SinkReason::Sink, "reqwest send error")?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             info_data!("VictoriaMetrics API error: {} - {}", status, body);
-            return Err(StructError::from(SinkReason::Sink(format!(
+            return Err(SinkReason::sink(format!(
                 "VictoriaMetrics API error: {} - {}",
                 status, body
-            ))));
+            )));
         }
         Ok(())
     }
@@ -203,31 +208,27 @@ impl wp_connector_api::AsyncCtrl for VictoriaMetricExporter {
 #[async_trait]
 impl wp_connector_api::AsyncRawDataSink for VictoriaMetricExporter {
     async fn sink_str(&mut self, _data: &str) -> SinkResult<()> {
-        Err(SinkReason::Sink(
-            "VictoriaMetric exporter does not support raw input; route TDC metrics only".into(),
-        )
-        .into())
+        Err(SinkReason::sink(
+            "VictoriaMetric exporter does not support raw input; route TDC metrics only",
+        ))
     }
 
     async fn sink_bytes(&mut self, _data: &[u8]) -> SinkResult<()> {
-        Err(SinkReason::Sink(
-            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only".into(),
-        )
-        .into())
+        Err(SinkReason::sink(
+            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only",
+        ))
     }
 
     async fn sink_str_batch(&mut self, _data: Vec<&str>) -> SinkResult<()> {
-        Err(SinkReason::Sink(
-            "VictoriaMetric exporter does not support raw input; route TDC metrics only".into(),
-        )
-        .into())
+        Err(SinkReason::sink(
+            "VictoriaMetric exporter does not support raw input; route TDC metrics only",
+        ))
     }
 
     async fn sink_bytes_batch(&mut self, _data: Vec<&[u8]>) -> SinkResult<()> {
-        Err(SinkReason::Sink(
-            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only".into(),
-        )
-        .into())
+        Err(SinkReason::sink(
+            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only",
+        ))
     }
 }
 
@@ -239,6 +240,12 @@ mod tests {
     };
     use wp_connector_api::AsyncRecordSink;
     use wp_model_core::model::{DataField, DataRecord};
+
+    #[test]
+    fn duration_millis_i64_saturates_instead_of_overflowing() {
+        let huge = Duration::from_millis(u64::MAX);
+        assert_eq!(duration_millis_i64(huge), i64::MAX);
+    }
 
     fn test_exporter() -> VictoriaMetricExporter {
         let client = reqwest::Client::builder()

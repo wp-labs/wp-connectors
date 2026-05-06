@@ -18,6 +18,7 @@ use crate::doris::config::DorisSinkConfig;
 use crate::utils::time_stat_utils::TimeStatUtils;
 use async_trait::async_trait;
 use bytes::Bytes;
+use orion_error::prelude::SourceRawErr;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serde::Serialize;
@@ -78,12 +79,13 @@ impl DorisSink {
     /// * `config` - Doris 连接与写入配置
     ///
     /// # Returns
-    /// * `anyhow::Result<Self>` - 成功返回初始化后的 sink
-    pub async fn new(config: DorisSinkConfig) -> anyhow::Result<Self> {
+    /// * `SinkResult<Self>` - 成功返回初始化后的 sink
+    pub async fn new(config: DorisSinkConfig) -> SinkResult<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
-            .no_proxy() // 禁用所有代理
-            .build()?;
+            .no_proxy()
+            .build()
+            .source_raw_err(SinkReason::Sink, "doris client build")?;
 
         // 预先构建完整的 Stream Load URL
         let url = format!(
@@ -141,7 +143,7 @@ impl DorisSink {
 
         for record in records {
             serde_json::to_writer(&mut buffer, &JsonRecord(record.as_ref()))
-                .map_err(|e| sink_error(format!("json serialization failed: {}", e)))?;
+                .source_raw_err(SinkReason::Sink, "json serialization failed")?;
             buffer.push(b'\n');
         }
 
@@ -409,7 +411,7 @@ impl AsyncRawDataSink for DorisSink {
 
 /// 统一封装 sink 层错误。
 fn sink_error(msg: impl Into<String>) -> SinkError {
-    SinkError::from(SinkReason::Sink(msg.into()))
+    SinkReason::sink(msg)
 }
 
 fn fingerprint_bytes(bytes: &[u8]) -> (u64, u64) {
@@ -653,7 +655,12 @@ mod tests {
         record.append(DataField::from_digit("id", 1));
 
         let err = sink.sink_record(&record).await.unwrap_err();
-        assert!(err.to_string().contains("stopped"));
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("stopped"))
+        );
     }
 
     #[tokio::test]
@@ -770,7 +777,12 @@ mod tests {
             .sink_records(vec![Arc::new(sample_record())])
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("type mismatch"));
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("type mismatch"))
+        );
         fail_mock.assert_calls_async(1).await;
     }
 
@@ -796,7 +808,12 @@ mod tests {
             .sink_records(vec![Arc::new(sample_record())])
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("partially failed"));
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("partially failed"))
+        );
         filtered_mock.assert_calls_async(1).await;
     }
 }

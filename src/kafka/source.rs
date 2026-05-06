@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use orion_error::ErrorOweBase;
+use orion_error::conversion::SourceRawErr;
+use orion_error::conversion::ToStructError;
 use rdkafka_wrap::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka_wrap::client::DefaultClientContext;
 use rdkafka_wrap::config::RDKafkaLogLevel;
@@ -12,11 +13,7 @@ use wp_model_core::event_id::next_wp_event_id;
 use wp_model_core::raw::RawData;
 
 use crate::WP_SRC_VAL;
-use wp_connector_api::{
-    DataSource, SourceBatch, SourceError, SourceEvent, SourceReason, SourceResult, Tags,
-};
-
-type AnyResult<T> = anyhow::Result<T>;
+use wp_connector_api::{DataSource, SourceBatch, SourceEvent, SourceReason, SourceResult, Tags};
 
 pub struct KafkaSource {
     key: String,
@@ -34,7 +31,7 @@ impl KafkaSource {
         tags: Tags,
         group_id: &str,
         config: &KafkaSourceConf,
-    ) -> AnyResult<Self> {
+    ) -> SourceResult<Self> {
         // Create topics if not exists (best-effort)
         create_topics(config).await?;
 
@@ -52,7 +49,8 @@ impl KafkaSource {
             }
             conf = conf.set_config(map);
         }
-        let consumer = KWConsumer::new_subscribe(conf)?;
+        let consumer = KWConsumer::new_subscribe(conf)
+            .source_raw_err(SourceReason::SupplierError, "subscribe kafka source failed")?;
         Ok(Self {
             key,
             consumer,
@@ -76,20 +74,25 @@ impl KafkaSource {
                 )]
             })
             .map_err(KafkaErrorWrapper)
-            .owe(SourceReason::SupplierError("kafka".to_string()))
+            .source_raw_err(SourceReason::SupplierError, "kafka".to_string())
     }
 }
 
-async fn create_topics(config: &KafkaSourceConf) -> AnyResult<()> {
+async fn create_topics(config: &KafkaSourceConf) -> SourceResult<()> {
     let admin_client: AdminClient<DefaultClientContext> = ClientConfig::new()
         .set("bootstrap.servers", &config.brokers)
         .set_log_level(RDKafkaLogLevel::Info)
-        .create()?;
+        .create()
+        .source_raw_err(
+            SourceReason::SupplierError,
+            "create kafka admin client failed",
+        )?;
     for topic in &config.topic {
         let new_topic = NewTopic::new(topic, 1, TopicReplication::Fixed(1));
         let results = admin_client
             .create_topics::<Vec<&NewTopic>>(vec![&new_topic], &AdminOptions::new())
-            .await?;
+            .await
+            .source_raw_err(SourceReason::SupplierError, "create kafka topic failed")?;
         for r in results {
             match r {
                 Ok(success) => {
@@ -100,11 +103,9 @@ async fn create_topics(config: &KafkaSourceConf) -> AnyResult<()> {
                         wp_log::warn_data!("[kafka] topic {} already exists, continuing", name);
                         continue;
                     }
-                    return Err(SourceError::from(SourceReason::SupplierError(format!(
-                        "Failed to create Kafka topic {} with error: {}",
-                        name, code
-                    )))
-                    .into());
+                    return Err(SourceReason::SupplierError.to_err().with_detail(format!(
+                        "failed to create kafka topic {name} with error: {code}"
+                    )));
                 }
             }
         }
@@ -112,7 +113,7 @@ async fn create_topics(config: &KafkaSourceConf) -> AnyResult<()> {
     Ok(())
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct KafkaErrorWrapper(pub KafkaError);
 
 impl Display for KafkaErrorWrapper {
@@ -121,12 +122,18 @@ impl Display for KafkaErrorWrapper {
     }
 }
 
+impl std::error::Error for KafkaErrorWrapper {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
+
 impl From<KafkaErrorWrapper> for SourceReason {
     fn from(value: KafkaErrorWrapper) -> Self {
         if value.0 == KafkaError::NoMessageReceived {
             return SourceReason::NotData;
         }
-        SourceReason::SupplierError(value.0.to_string())
+        SourceReason::SupplierError
     }
 }
 

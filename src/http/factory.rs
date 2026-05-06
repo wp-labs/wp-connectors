@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
-    SinkHandle, SinkReason, SinkResult, SinkSpec,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
+    SinkReason, SinkResult, SinkSpec,
 };
 
 /// Factory for creating and validating HTTP Sink instances
@@ -74,9 +74,7 @@ impl SinkFactory for HttpSinkFactory {
             compression,
         );
 
-        let sink = HttpSink::new(config).await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!("init http sink failed: {err}")))
-        })?;
+        let sink = HttpSink::new(config).await?;
 
         Ok(SinkHandle::new(Box::new(sink)))
     }
@@ -279,11 +277,12 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.reason(), &SinkReason::Sink);
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("http or https protocol")
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("http or https protocol"))
         );
     }
 
@@ -317,7 +316,13 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("method"));
+        let err = result.unwrap_err();
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("method"))
+        );
     }
 
     #[test]
@@ -362,7 +367,13 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("timeout_secs"));
+        let err = result.unwrap_err();
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("timeout_secs"))
+        );
     }
 
     #[test]
@@ -382,7 +393,9 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("fmt"));
+        let err = result.unwrap_err();
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(err.detail().as_deref().is_some_and(|m| m.contains("fmt")));
     }
 
     #[test]
@@ -409,7 +422,13 @@ mod tests {
         let factory = HttpSinkFactory;
         let result = factory.validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("compression"));
+        let err = result.unwrap_err();
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("compression"))
+        );
     }
 
     #[test]

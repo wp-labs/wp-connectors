@@ -7,7 +7,7 @@ use serde_json::json;
 use wp_connector_api::ParamMap;
 
 pub const TEST_VLOGS_ENDPOINT: &str = "http://127.0.0.1:9428";
-pub const TEST_VLOGS_INSERT_PATH: &str = "/insert/jsonline";
+pub const TEST_VLOGS_API_PATH: &str = "/insert/jsonline";
 
 const VLOGS_READY_ATTEMPTS: usize = 20;
 const VLOGS_READY_INTERVAL_SECS: u64 = 2;
@@ -30,9 +30,9 @@ fn vlogs_client() -> reqwest::Client {
 pub fn create_vlogs_test_config() -> ParamMap {
     let mut params = ParamMap::new();
     params.insert("endpoint".into(), json!(TEST_VLOGS_ENDPOINT));
-    params.insert("insert_path".into(), json!(TEST_VLOGS_INSERT_PATH));
+    params.insert("api_path".into(), json!(TEST_VLOGS_API_PATH));
     params.insert("fmt".into(), json!("json"));
-    params.insert("request_timeout_secs".into(), json!(30.0));
+    params.insert("timeout_secs".into(), json!(30.0));
     params
 }
 

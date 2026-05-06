@@ -5,7 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
 ## [Unreleased]
+
+## [0.13.4] - 2026-05-04
+
+### Changed
+- Adapt connector error handling for `wp-connector-api` `0.10.1` unit `SinkReason`/`SourceReason` variants.
+- Store connector error messages on `StructError.detail` instead of reason variant payloads.
+- Preserve raw external errors with `source_raw_err(...)`/`with_source(...)` where supported.
+- Replace runtime `anyhow::Result` constructors with `SourceResult`/`SinkResult` and structured Postgres `PgReason`/`PgResult` internals.
+- Move `anyhow` out of runtime dependencies and keep it only for test helpers.
+- Restore `Tags::from_parse(...)` for source metadata tags to keep existing tag parsing semantics.
+
+### Fixed
+- Update unit tests to assert reason classification separately from `StructError.detail`.
+
+## [0.13.3] - 2026-05-03
+
+### Changed
+- Extract test infrastructure to `wp-connector-test-utils` crate
+
+## [0.13.2] - 2026-05-03
+
+### Changed
+- Migrate component testing infrastructure from `anyhow::Result` to OrionError system
+- Migrate sink and HTTP source constructors from `anyhow::Result` to `SinkResult`/`SourceResult`
+- Extract `dmdb` connector into separate `wp-connectors-labs` crate
+- Remove doc examples from `clickhouse`, `elasticsearch`, `http` module docs
+- Fix test assertions for OrionError Display format changes
+- Remove flaky timing assertion from `send_with_retry_exponential_backoff_timing` test
+
+### Fixed
+- Fix `ErrorOweBase` and `ToStructError` import paths for orion-error 0.7.2
+- Fix `StdError` conversion in Kafka source `create_topics()`
+- Fix doctest compilation for `SinkError`/`SourceError` in doc examples
 
 ## [0.12.0] - 2026-04-11
 
@@ -118,7 +152,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.13.4...HEAD
+[0.13.4]: https://github.com/wp-labs/wp-connectors/compare/v0.13.3...v0.13.4
+[0.13.3]: https://github.com/wp-labs/wp-connectors/compare/v0.13.2...v0.13.3
+[0.13.2]: https://github.com/wp-labs/wp-connectors/compare/v0.12.0...v0.13.2
 [0.12.0]: https://github.com/wp-labs/wp-connectors/compare/v0.10.0...v0.12.0
 [0.10.0]: https://github.com/wp-labs/wp-connectors/compare/v0.7.8...v0.10.0
 [0.8.0]: https://github.com/wp-labs/wp-connectors/compare/v0.7.8...v0.8.0

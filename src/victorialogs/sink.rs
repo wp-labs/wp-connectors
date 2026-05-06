@@ -3,32 +3,30 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use orion_error::conversion::{SourceRawErr, ToStructError};
 use tokio::time::sleep;
-use wp_connector_api::{
-    AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkError, SinkReason, SinkResult,
-};
+use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkReason, SinkResult};
 use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_log::error_data;
 use wp_model_core::model::{DataRecord, Value, fmt_def::TextFmt};
 
 pub(crate) struct VictoriaLogSink {
-    endpoint: String,
-    insert_path: String,
+    write_url: String,
     client: reqwest::Client,
     fmt: TextFmt,
-    create_time_field: Option<String>,
+    timestamp_field: Option<String>,
     tags: HashMap<String, String>,
 }
 
 impl VictoriaLogSink {
-    /// 解析时间字段为字符串，逻辑与原实现一致：优先使用 create_time_field，回退当前时间。
+    /// 解析时间字段为字符串，逻辑与原实现一致：优先使用 timestamp_field，回退当前时间。
     fn resolve_timestamp_str(&self, data: &DataRecord) -> String {
         let now = chrono::Utc::now()
             .timestamp_nanos_opt()
             .unwrap_or(chrono::Utc::now().timestamp_millis())
             .to_string();
 
-        let Some(field) = &self.create_time_field else {
+        let Some(field) = &self.timestamp_field else {
             return now;
         };
         let Some(orin_timestamp) = data.get2(field) else {
@@ -60,26 +58,22 @@ impl VictoriaLogSink {
         value_map.extend(self.tags.clone());
         value_map.insert("_msg".to_string(), formatted_msg);
         value_map.insert("_time".to_string(), timestamp);
-        serde_json::to_string(&value_map).map_err(|e| {
-            SinkError::from(SinkReason::Sink(format!(
-                "build jsonline for victorialogs flush fail: {}",
-                e
-            )))
-        })
+        serde_json::to_string(&value_map).source_raw_err(
+            SinkReason::Sink,
+            "build jsonline for victorialogs flush fail",
+        )
     }
 
     async fn send_payload(&self, payload: String) -> SinkResult<()> {
         let client = &self.client;
-        let endpoint = &self.endpoint;
-        let insert_path = &self.insert_path;
+        let write_url = &self.write_url;
         // 重试次数
         const MAX_ATTEMPTS: usize = 3;
         // 是重试之间的退避时间
         const BACKOFF_MS: [u64; 2] = [200, 500];
-        let url = format!("{}{}", endpoint, insert_path);
 
         for attempt in 0..MAX_ATTEMPTS {
-            match client.post(&url).body(payload.clone()).send().await {
+            match client.post(write_url).body(payload.clone()).send().await {
                 Ok(resp) => {
                     let status = resp.status();
                     if status.is_success() {
@@ -87,18 +81,16 @@ impl VictoriaLogSink {
                     }
                     error_data!("reqwest send error, text: {:?}", resp.text().await);
                     if !status.is_server_error() {
-                        return Err(SinkError::from(SinkReason::Sink(
-                            "reqwest send error".to_string(),
-                        )));
+                        return Err(SinkReason::sink("reqwest send error"));
                     }
                 }
                 Err(e) => {
                     error_data!("reqwest send error, text: {:?}", e);
                     if !(e.is_timeout() || e.is_connect()) {
-                        return Err(SinkError::from(SinkReason::Sink(format!(
-                            "reqwest send fail: {}",
-                            e
-                        ))));
+                        return Err(SinkReason::Sink
+                            .to_err()
+                            .with_detail("reqwest send fail")
+                            .with_source(e));
                     }
                 }
             }
@@ -112,17 +104,14 @@ impl VictoriaLogSink {
             }
         }
 
-        Err(SinkError::from(SinkReason::Sink(
-            "reqwest send fail after retries".to_string(),
-        )))
+        Err(SinkReason::sink("reqwest send fail after retries"))
     }
 
     pub(crate) fn new(
-        endpoint: String,
-        insert_path: String,
+        write_url: String,
         client: reqwest::Client,
         fmt: TextFmt,
-        create_time_field: Option<String>,
+        timestamp_field: Option<String>,
         tags: Vec<String>,
     ) -> Self {
         let tag_map: HashMap<String, String> = tags
@@ -133,11 +122,10 @@ impl VictoriaLogSink {
             })
             .collect();
         Self {
-            endpoint,
-            insert_path,
+            write_url,
             client,
             fmt,
-            create_time_field,
+            timestamp_field,
             tags: tag_map,
         }
     }
@@ -221,8 +209,7 @@ mod tests {
             .expect("Failed to create client");
 
         let mut sink = VictoriaLogSink::new(
-            server.base_url(),
-            "/insert".into(),
+            format!("{}/insert", server.base_url()),
             client,
             TextFmt::Json,
             None,
@@ -242,8 +229,7 @@ mod tests {
             .expect("Failed to create client");
 
         VictoriaLogSink::new(
-            server.base_url(),
-            "/insert".into(),
+            format!("{}/insert", server.base_url()),
             client,
             TextFmt::Json,
             None,
@@ -316,11 +302,11 @@ mod tests {
     /// 创建用于测试的 VictoriaLogSink 实例
     ///
     /// # 参数
-    /// * `create_time_field` - 可选的自定义时间戳字段名称
+    /// * `timestamp_field` - 可选的自定义时间戳字段名称
     ///
     /// # 返回
     /// 配置好的 VictoriaLogSink 实例，用于测试
-    fn create_test_sink(create_time_field: Option<&str>) -> VictoriaLogSink {
+    fn create_test_sink(timestamp_field: Option<&str>) -> VictoriaLogSink {
         let client = reqwest::Client::builder()
             .no_proxy()
             .timeout(Duration::from_secs(1))
@@ -328,11 +314,10 @@ mod tests {
             .expect("Failed to create client");
 
         VictoriaLogSink::new(
-            "http://127.0.0.1:8428".into(),
-            "/insert".into(),
+            "http://127.0.0.1:8428/insert".into(),
             client,
             TextFmt::Json,
-            create_time_field.map(|s| s.to_string()),
+            timestamp_field.map(|s| s.to_string()),
             Vec::new(),
         )
     }
@@ -341,9 +326,9 @@ mod tests {
     async fn test_resolve_timestamp_str() {
         // 测试用例定义
         //
-        // 格式: (create_time_field, field_value, description)
+        // 格式: (timestamp_field, field_value, description)
         //
-        // * create_time_field - sink 配置的时间戳字段（None 表示使用默认）
+        // * timestamp_field - sink 配置的时间戳字段（None 表示使用默认）
         // * field_value       - DataRecord 中实际存储的字段值（None 表示不添加字段）
         // * description       - 测试用例描述
         let cases = vec![
@@ -356,13 +341,13 @@ mod tests {
             ),
         ];
 
-        for (create_time_field, field_value, desc) in cases {
+        for (timestamp_field, field_value, desc) in cases {
             let mut record = DataRecord::default();
             if let Some(value) = field_value {
                 record.append(DataField::from_chars("timestamp_field", value));
             }
 
-            let sink = create_test_sink(create_time_field);
+            let sink = create_test_sink(timestamp_field);
             let timestamp = sink.resolve_timestamp_str(&record);
 
             assert!(

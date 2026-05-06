@@ -1,8 +1,4 @@
 target/
-.*/
-.run.gxl
-.rule
-wp-docs
-Cargo.lock
-.tmp
 .DS_Store
+_gal/.report
+Cargo.lock

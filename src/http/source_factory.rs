@@ -28,9 +28,7 @@ impl SourceFactory for HttpSourceFactory {
         // 使用有界队列而不是无界队列，至少给入口层留一个明确的背压边界。
         // 当前容量是经验值；若高并发场景下仍然偏小/偏大，后续可以继续参数化。
         let (sender, receiver) = mpsc::channel(http_source_queue_capacity());
-        HttpSource::register(&config, sender)
-            .await
-            .map_err(|err| SourceReason::Other(err.to_string()))?;
+        HttpSource::register(&config, sender).await?;
 
         let meta_tags = build_source_tags(&spec.tags, &config);
         let source = HttpSource::new(spec.name.clone(), meta_tags.clone(), config, receiver);
@@ -71,10 +69,12 @@ fn required_port(spec: &SourceSpec, key: &str) -> SourceResult<u16> {
         .params
         .get(key)
         .and_then(Value::as_u64)
-        .ok_or_else(|| SourceReason::Other(format!("http.{key} must be an integer")))?;
+        .ok_or_else(|| SourceReason::other(format!("http.{key} must be an integer")))?;
 
     if port == 0 || port > u16::MAX as u64 {
-        return Err(SourceReason::Other(format!("http.{key} must be in 1..=65535")).into());
+        return Err(SourceReason::other(format!(
+            "http.{key} must be in 1..=65535"
+        )));
     }
 
     Ok(port as u16)
@@ -88,10 +88,10 @@ fn required_path(spec: &SourceSpec, key: &str) -> SourceResult<String> {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|path| !path.is_empty())
-        .ok_or_else(|| SourceReason::Other(format!("http.{key} must not be empty")))?;
+        .ok_or_else(|| SourceReason::other(format!("http.{key} must not be empty")))?;
 
     if !path.starts_with('/') {
-        return Err(SourceReason::Other(format!("http.{key} must start with '/'")).into());
+        return Err(SourceReason::other(format!("http.{key} must start with '/'")).into());
     }
 
     Ok(path.to_string())
@@ -125,7 +125,12 @@ mod tests {
         let err = factory
             .validate_spec(&build_spec(BTreeMap::new()))
             .expect_err("missing params should fail");
-        assert!(err.to_string().contains("http.port must be an integer"));
+        assert_eq!(err.reason(), &SourceReason::Other);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("http.port must be an integer"))
+        );
     }
 
     #[test]
@@ -138,7 +143,12 @@ mod tests {
         let err = factory
             .validate_spec(&spec)
             .expect_err("path without slash should fail");
-        assert!(err.to_string().contains("http.path must start with '/'"));
+        assert_eq!(err.reason(), &SourceReason::Other);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("http.path must start with '/"))
+        );
     }
 
     #[test]

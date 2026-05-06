@@ -1,0 +1,91 @@
+mod ver {
+
+  flow use   {
+      gx.ver ( file : "${GXL_START_ROOT}/version.txt" ,  inc : "null" );
+    }
+  flow build   {
+      gx.ver ( file : "${GXL_START_ROOT}/version.txt" ,  inc : "build"  );
+      gx.echo ( "current version : ${VERSION}" );
+    }
+  flow patch {
+      gx.ver ( file : "${GXL_START_ROOT}/version.txt" ,  inc : "bugfix" );
+      gx.echo (  "current version : ${VERSION}"  );
+    }
+  flow feature {
+      gx.ver ( file : "${GXL_START_ROOT}/version.txt" ,  inc : "feature"  );
+      gx.echo ( "current version : ${VERSION}"  );
+    }
+flow set_cargo_ver {
+    gx.patch_file(
+    file   : "./Cargo.toml",
+    action : "set",
+    marker : "version",
+    value  : r#""${VERSION}""#
+    );
+    }
+}
+mod git {
+  flow ci_ver {
+    gx.ver ( file : "${GXL_START_ROOT}/version.txt" ,  inc : "null" );
+    gx.echo (  "${VERSION}" );
+    gx.cmd (  "git commit -a -m 'update version to ${VERSION}' "  );
+  }
+}
+mod sys_ver_adm {
+  #[auto_load(entry)]
+  flow __into_sys_ver_adm | ver.use {
+  }
+  #[usage(desp="update version of patch ")]
+  flow v_patch   | ver.patch  { }
+  #[usage(desp="update version of feature ")]
+  flow v_feat |  ver.feature   { }
+  #[usage(desp="add tag by version ")]
+  flow tag_stable {
+    gx.ver ( file : "${GXL_START_ROOT}/version.txt" ,  inc : "null"  );
+    gx.cmd (  "git commit -a -m v${VERSION}" , ok_codes : "0,1");
+    gx.cmd (  "git tag v${VERSION}" );
+    gx.cmd (  "git push --tags" );
+  }
+
+  flow tag_beta {
+    gx.ver ( file : "${GXL_START_ROOT}/version.txt" ,  inc : "null"  );
+    gx.cmd (  "git commit -a -m v${VERSION}", ok_codes : "0,1" );
+    gx.cmd (  "git tag v${VERSION}-beta" );
+    gx.cmd (  "git push --tags" );
+  }
+  flow tag_alpha {
+    gx.ver ( file : "${GXL_START_ROOT}/version.txt" ,  inc : "null"  );
+    gx.cmd (  "git commit -a -m v${VERSION}" , ok_codes : "0,1");
+    gx.cmd (  "git tag v${VERSION}-alpha" );
+    gx.cmd (  "git push --tags" );
+  }
+}
+mod lib_ver_adm {
+  #[auto_load(entry)]
+  flow __into_lib_ver_adm | ver.use {
+  }
+  #[usage(desp="update version of patch ")]
+  flow v_patch   | ver.patch  { }
+  #[usage(desp="update version of feature ")]
+  flow v_feat |  ver.feature   { }
+  #[usage(desp="add tag by version ")]
+  flow v_tag {
+    gx.ver ( file : "${GXL_START_ROOT}/version.txt" ,  inc : "null"  );
+    gx.cmd (  "git commit -a -m v${VERSION}" , ok_codes : "0,1");
+    gx.cmd (  "git tag v${VERSION}" );
+    gx.cmd (  "git push --tags" );
+  }
+}
+
+mod ver_adm : sys_ver_adm {
+}
+mod  envs {
+  env default {
+  }
+}
+
+mod main    : lib_ver_adm {
+
+    #[auto_load(exit)]
+    flow _set_ver : ver.set_cargo_ver {}
+}

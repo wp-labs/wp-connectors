@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use wp_connector_api::{
-    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
-    SinkHandle, SinkReason, SinkResult, SinkSpec, SourceBuildCtx, SourceDefProvider, SourceFactory,
-    SourceHandle, SourceMeta, SourceReason, SourceResult, SourceSpec, SourceSvcIns,
+    ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
+    SinkResult, SinkSpec, SourceBuildCtx, SourceDefProvider, SourceFactory, SourceHandle,
+    SourceMeta, SourceReason, SourceResult, SourceSpec, SourceSvcIns,
 };
 
 use crate::count::{CountSink, CountSource};
@@ -59,9 +59,7 @@ impl SinkFactory for CountSinkFactory {
     }
 
     async fn build(&self, _spec: &SinkSpec, _ctx: &SinkBuildCtx) -> SinkResult<SinkHandle> {
-        let sink = CountSink::new().await.map_err(|err| {
-            SinkError::from(SinkReason::sink(format!("init count sink failed: {err}")))
-        })?;
+        let sink = CountSink::new().await?;
 
         Ok(SinkHandle::new(Box::new(sink)))
     }
@@ -93,7 +91,7 @@ struct CountSourceConfig {
 fn build_count_source_config(spec: &SourceSpec) -> SourceResult<CountSourceConfig> {
     let batch_size = parse_u64_param(spec, "batch")?.unwrap_or(1) as usize;
     if batch_size == 0 {
-        return Err(SourceReason::Other("count.batch must be > 0".into()).into());
+        return Err(SourceReason::other("count.batch must be > 0"));
     }
 
     let total = parse_u64_param(spec, "total")?;
@@ -110,9 +108,9 @@ fn parse_u64_param(spec: &SourceSpec, key: &str) -> SourceResult<Option<u64>> {
     match spec.params.get(key) {
         None => Ok(None),
         Some(Value::Number(number)) => number.as_u64().map(Some).ok_or_else(|| {
-            SourceReason::Other(format!("count.{key} must be a non-negative integer")).into()
+            SourceReason::other(format!("count.{key} must be a non-negative integer"))
         }),
-        Some(_) => Err(SourceReason::Other(format!("count.{key} must be an integer")).into()),
+        Some(_) => Err(SourceReason::other(format!("count.{key} must be an integer")).into()),
     }
 }
 
@@ -153,6 +151,11 @@ mod tests {
         let err = factory
             .validate_spec(&spec)
             .expect_err("zero batch should fail");
-        assert!(err.to_string().contains("count.batch must be > 0"));
+        assert_eq!(err.reason(), &SourceReason::Other);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("count.batch must be > 0"))
+        );
     }
 }

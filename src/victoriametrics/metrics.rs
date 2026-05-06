@@ -33,7 +33,7 @@ use wp_model_core::model::Value;
 // ------------- metrics helpers -------------
 
 /// 一次 sysinfo 刷新同时更新 CPU + 内存两个 gauge，避免重复的系统调用开销。
-/// 在定时 flush 任务中调用，采样间隔即 flush_interval_secs。
+/// 在定时 flush 任务中调用，采样间隔即 flush_secs。
 pub(crate) fn system_usage_stat(system: &mut System) {
     if let Some((cpu, mem)) = current_process_usage(system) {
         CPU_USAGE

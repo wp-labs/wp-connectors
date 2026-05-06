@@ -30,9 +30,7 @@ impl ClickHouseSink {
     /// # Arguments
     /// * `config` - ClickHouse 连接与写入配置
     ///
-    /// # Returns
-    /// * `anyhow::Result<Self>` - 成功返回初始化后的 sink
-    pub async fn new(config: ClickHouseSinkConfig) -> anyhow::Result<Self> {
+    pub async fn new(config: ClickHouseSinkConfig) -> SinkResult<Self> {
         // 构建 ClickHouse 客户端
         let client = Client::default()
             .with_url(&config.endpoint)
@@ -218,5 +216,5 @@ impl AsyncCtrl for ClickHouseSink {
 
 /// 统一封装 sink 层错误
 fn sink_error(msg: impl Into<String>) -> SinkError {
-    SinkError::from(SinkReason::Sink(msg.into()))
+    SinkReason::sink(msg)
 }

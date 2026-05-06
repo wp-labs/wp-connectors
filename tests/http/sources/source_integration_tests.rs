@@ -10,9 +10,9 @@ use serde_json::{Value, json};
 use wp_connector_api::ParamMap;
 use wp_connectors::http::HttpSourceFactory;
 
-use crate::common::{
-    component_tools::{ShellScriptRestart, ShellScriptTool},
-    source::{integration_runtime::SourceIntegrationRuntime, source_info::SourceInfo},
+use wp_connector_test_utils::{
+    wp_connector_test_utils::{ShellScriptRestart, ShellScriptTool},
+    SourceIntegrationRuntime, SourceInfo,
 };
 
 fn free_port() -> Result<u16> {
@@ -91,7 +91,7 @@ async fn test_http_source_basic_integration() -> Result<()> {
         None::<&str>,
         None::<&str>,
         ShellScriptRestart::NoRestart,
-    )?;
+    ).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let scenarios = vec![
         HttpSourceScenario {
@@ -184,5 +184,6 @@ async fn test_http_source_basic_integration() -> Result<()> {
         .collect();
 
     let runtime = SourceIntegrationRuntime::new(tool, source_infos);
-    runtime.run(true).await
+    runtime.run(true).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(())
 }
