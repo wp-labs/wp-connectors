@@ -28,7 +28,7 @@ impl SinkFactory for VictoriaLogSinkFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if endpoint.trim().is_empty() {
-            return Err(SinkReason::sink("victorialog.endpoint must not be empty").into());
+            return Err(SinkReason::sink("victorialog.endpoint must not be empty"));
         }
         let api_path = spec
             .params
@@ -36,7 +36,7 @@ impl SinkFactory for VictoriaLogSinkFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if api_path.trim().is_empty() {
-            return Err(SinkReason::sink("victorialog.api_path must not be empty").into());
+            return Err(SinkReason::sink("victorialog.api_path must not be empty"));
         }
         Ok(())
     }

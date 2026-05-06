@@ -61,6 +61,7 @@ pub struct PostgresSource {
     db: DatabaseConnection,
     table_ref: String,
     cursor_column: String,
+    payload_columns: Vec<String>,
     cursor_plan: CursorPlan,
     batch: usize,
     poll_interval: Duration,
@@ -103,7 +104,14 @@ impl PostgresSource {
 
         let cursor_plan = CursorPlan::build(&db, &config.schema, table, cursor_column, cursor_type)
             .await
-            .source_err(SourceReason::Other, "initialize postgres source failed")?;
+            .map_err(|err| {
+                SourceReason::Other.err_detail(format!("build cursor plan failed: {err}"))
+            })?;
+        let payload_columns = query_payload_columns(&db, &config.schema, table)
+            .await
+            .map_err(|err| {
+                SourceReason::Other.err_detail(format!("query payload columns failed: {err}"))
+            })?;
         // 无时区 start_from 和 Unix 时间戳按 PostgreSQL 当前连接的 session TimeZone 解释。
         // 这里在 Source 启动时固定一次，避免运行中数据库配置变化导致首次起点语义漂移。
         let session_tz = query_session_time_zone(&db)
@@ -154,6 +162,7 @@ impl PostgresSource {
             db,
             table_ref,
             cursor_column: cursor_column.to_string(),
+            payload_columns,
             cursor_plan,
             batch,
             poll_interval,
@@ -240,6 +249,7 @@ impl PostgresSource {
         let sql = build_batch_query(
             &self.table_ref,
             &self.cursor_column,
+            &self.payload_columns,
             lower_bound.is_some(),
             &self.cursor_plan,
         );
@@ -662,6 +672,50 @@ async fn query_cursor_data_type(
         .source_raw_err(PgReason::Database, "postgres read cursor data type failed")
 }
 
+/// 查询用于生成 payload 的列清单，排除内部使用的游标镜像列名，避免 JSON 中泄露实现细节。
+async fn query_payload_columns(
+    db: &DatabaseConnection,
+    schema: &str,
+    table: &str,
+) -> PgResult<Vec<String>> {
+    let sql = "SELECT column_name \
+          FROM information_schema.columns \
+          WHERE table_schema = $1 AND table_name = $2 \
+          ORDER BY ordinal_position";
+    let stmt = Statement::from_sql_and_values(
+        db.get_database_backend(),
+        sql,
+        Values(vec![
+            Value::String(Some(Box::new(schema.to_string()))),
+            Value::String(Some(Box::new(table.to_string()))),
+        ]),
+    );
+
+    let rows = db
+        .query_all(stmt)
+        .await
+        .source_raw_err(PgReason::Database, "postgres query payload columns failed")?;
+    let mut columns = Vec::with_capacity(rows.len());
+    for row in rows {
+        let column_name: String = row
+            .try_get_by_index(0)
+            .source_raw_err(PgReason::Database, "postgres read column name failed")?;
+        columns.push(column_name);
+    }
+
+    if columns.is_empty() {
+        return Err(pg_err(
+            PgReason::Database,
+            format!(
+                "postgres source payload columns are empty: {}.{}",
+                schema, table
+            ),
+        ));
+    }
+
+    Ok(columns)
+}
+
 /// 查询当前连接的 PostgreSQL session TimeZone，并固定启动时 UTC offset。
 async fn query_session_time_zone(db: &DatabaseConnection) -> PgResult<DbSessionTimeZone> {
     let timezone_stmt = Statement::from_string(db.get_database_backend(), "SHOW TIME ZONE");
@@ -710,10 +764,13 @@ async fn query_session_time_zone(db: &DatabaseConnection) -> PgResult<DbSessionT
 fn build_batch_query(
     table_ref: &str,
     cursor_column: &str,
+    payload_columns: &[String],
     has_lower_bound: bool,
     cursor_plan: &CursorPlan,
 ) -> String {
     let cursor_expr = quote_ident(cursor_column);
+    let payload_projection = build_payload_projection(payload_columns);
+    let warp_parse_table_param = if has_lower_bound { "$3" } else { "$2" };
     if has_lower_bound {
         let lower_bound_expr = cursor_plan.lower_bound_expr();
         // 有 checkpoint/start_from 时使用 keyset pagination：cursor > lower_bound。
@@ -727,9 +784,11 @@ fn build_batch_query(
             ) \
             SELECT \
                 \"__warp_cursor_value\"::text AS cursor_value, \
-                ((to_jsonb(base) - '__warp_cursor_value') \
-                    || jsonb_build_object('warp_parse_table', $3::text))::text AS payload \
+                row_to_json(payload_row)::text AS payload \
             FROM base \
+            CROSS JOIN LATERAL (\
+                SELECT {payload_projection}, {warp_parse_table_param}::text AS warp_parse_table\
+            ) AS payload_row \
             ORDER BY \"__warp_cursor_value\" ASC"
         )
     } else {
@@ -743,12 +802,26 @@ fn build_batch_query(
             ) \
             SELECT \
                 \"__warp_cursor_value\"::text AS cursor_value, \
-                ((to_jsonb(base) - '__warp_cursor_value') \
-                    || jsonb_build_object('warp_parse_table', $2::text))::text AS payload \
+                row_to_json(payload_row)::text AS payload \
             FROM base \
+            CROSS JOIN LATERAL (\
+                SELECT {payload_projection}, {warp_parse_table_param}::text AS warp_parse_table\
+            ) AS payload_row \
             ORDER BY \"__warp_cursor_value\" ASC"
         )
     }
+}
+
+/// 将 payload 列清单展开为显式 SELECT 投影，避免依赖 PostgreSQL 9.5+ 的 JSON 删键运算。
+fn build_payload_projection(payload_columns: &[String]) -> String {
+    payload_columns
+        .iter()
+        .map(|column| {
+            let ident = quote_ident(column);
+            format!("base.{ident} AS {ident}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// 将 PostgreSQL 原生时间列 data_type 映射成参数侧 cast 类型。
@@ -1340,28 +1413,54 @@ mod tests {
     #[test]
     fn build_batch_query_omits_where_without_lower_bound() {
         let cursor_plan = test_cursor_plan(CursorType::Int, LowerBoundBinding::Integer);
-        let sql = build_batch_query("\"public\".\"events\"", "id", false, &cursor_plan);
+        let sql = build_batch_query(
+            "\"public\".\"events\"",
+            "id",
+            &["id".to_string(), "name".to_string()],
+            false,
+            &cursor_plan,
+        );
         assert!(sql.contains("ORDER BY \"id\" ASC"));
         assert!(sql.contains("LIMIT $1"));
         assert!(!sql.contains("WHERE \"id\" > $1"));
+        assert!(sql.contains("row_to_json(payload_row)::text AS payload"));
+        assert!(sql.contains(
+            "SELECT base.\"id\" AS \"id\", base.\"name\" AS \"name\", $2::text AS warp_parse_table"
+        ));
+        assert!(!sql.contains("jsonb_build_object"));
+        assert!(!sql.contains("row_to_json(base) - '__warp_cursor_value'"));
     }
 
     /// 验证有下界时查询语句会拼接增量过滤条件与正确的参数序号。
     #[test]
     fn build_batch_query_includes_where_with_lower_bound() {
         let cursor_plan = test_cursor_plan(CursorType::Int, LowerBoundBinding::Integer);
-        let sql = build_batch_query("\"public\".\"events\"", "id", true, &cursor_plan);
+        let sql = build_batch_query(
+            "\"public\".\"events\"",
+            "id",
+            &["id".to_string(), "name".to_string()],
+            true,
+            &cursor_plan,
+        );
         assert!(sql.contains("WHERE \"id\" > $1"));
         assert!(!sql.contains("WHERE \"id\" > $1::"));
         assert!(sql.contains("LIMIT $2"));
-        assert!(sql.contains("warp_parse_table', $3::text"));
+        assert!(sql.contains(
+            "SELECT base.\"id\" AS \"id\", base.\"name\" AS \"name\", $3::text AS warp_parse_table"
+        ));
     }
 
     /// 验证 decimal / numeric 游标会在 SQL 中追加 `numeric` 转换。
     #[test]
     fn build_batch_query_uses_numeric_cast_for_decimal_cursor() {
         let cursor_plan = numeric_cursor_plan();
-        let sql = build_batch_query("\"public\".\"events\"", "amount_id", true, &cursor_plan);
+        let sql = build_batch_query(
+            "\"public\".\"events\"",
+            "amount_id",
+            &["amount_id".to_string()],
+            true,
+            &cursor_plan,
+        );
         assert!(sql.contains("WHERE \"amount_id\" > $1::numeric"));
     }
 
@@ -1369,7 +1468,13 @@ mod tests {
     #[test]
     fn build_batch_query_uses_native_time_cast() {
         let cursor_plan = timestamptz_cursor_plan();
-        let sql = build_batch_query("\"public\".\"events\"", "create_time", true, &cursor_plan);
+        let sql = build_batch_query(
+            "\"public\".\"events\"",
+            "create_time",
+            &["create_time".to_string()],
+            true,
+            &cursor_plan,
+        );
         assert!(sql.contains("WHERE \"create_time\" > $1::timestamptz"));
     }
 

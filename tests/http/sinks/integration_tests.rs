@@ -2,12 +2,12 @@
 
 use wp_connectors::http::HttpSinkFactory;
 
-use wp_connector_test_utils::{
-    wp_connector_test_utils::{RuntimeResult, ShellScriptRestart, ShellScriptTool, ToolResultExt},
-    SinkIntegrationRuntime, SinkInfo,
-};
 use crate::http_common::{
     create_http_integration_scenarios, query_http_count, wait_for_http_ready,
+};
+use wp_connector_test_utils::{
+    RuntimeResult, ShellScriptRestart, ShellScriptTool, SinkInfo, SinkIntegrationRuntime,
+    ToolResultExt,
 };
 
 #[tokio::test]
@@ -19,7 +19,8 @@ async fn test_http_sink_full_integration() -> RuntimeResult<()> {
         Some("tests/http/component/install_deps.sh"),
         Some("tests/http/component/wait_ready.sh"),
         ShellScriptRestart::NoRestart,
-    ).into_rt()?;
+    )
+    .into_rt()?;
 
     let sink_infos = create_http_integration_scenarios()
         .into_iter()

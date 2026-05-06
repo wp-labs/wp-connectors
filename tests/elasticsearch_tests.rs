@@ -4,10 +4,6 @@
 ))]
 
 #[cfg(any(feature = "external_integration", feature = "external_performance"))]
-#[path = "common/mod.rs"]
-mod common;
-
-#[cfg(any(feature = "external_integration", feature = "external_performance"))]
 #[path = "elasticsearch/common.rs"]
 mod elasticsearch_common;
 

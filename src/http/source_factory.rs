@@ -91,7 +91,9 @@ fn required_path(spec: &SourceSpec, key: &str) -> SourceResult<String> {
         .ok_or_else(|| SourceReason::other(format!("http.{key} must not be empty")))?;
 
     if !path.starts_with('/') {
-        return Err(SourceReason::other(format!("http.{key} must start with '/'")).into());
+        return Err(SourceReason::other(format!(
+            "http.{key} must start with '/'"
+        )));
     }
 
     Ok(path.to_string())

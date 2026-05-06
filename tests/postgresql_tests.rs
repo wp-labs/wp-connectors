@@ -4,10 +4,6 @@
 ))]
 
 #[cfg(any(feature = "external_integration", feature = "external_performance"))]
-#[path = "common/mod.rs"]
-mod common;
-
-#[cfg(any(feature = "external_integration", feature = "external_performance"))]
 #[path = "postgresql/common.rs"]
 mod postgresql_common;
 

@@ -1,21 +1,20 @@
 #![cfg(all(feature = "kafka", feature = "external_integration"))]
 
-
 use wp_connectors::kafka::KafkaSinkFactory;
 
-use wp_connector_test_utils::{
-    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    SinkIntegrationRuntime, SinkInfo,
-};
 use crate::kafka_common::{
     create_kafka_test_scenarios, init_kafka_topic_with_params, query_topic_count,
     wait_for_kafka_ready,
+};
+use wp_connector_test_utils::{
+    DockerComposeTool, RuntimeResult, SinkInfo, SinkIntegrationRuntime, ToolResultExt,
 };
 
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
 async fn test_kafka_sink_full_integration() -> RuntimeResult<()> {
-    let docker_tool = DockerComposeTool::new("tests/kafka/component/docker-compose.yml").into_rt()?;
+    let docker_tool =
+        DockerComposeTool::new("tests/kafka/component/docker-compose.yml").into_rt()?;
 
     let sink_infos = create_kafka_test_scenarios()
         .into_iter()

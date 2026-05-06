@@ -2,25 +2,22 @@
 
 use std::time::Duration;
 
-
 use wp_connectors::kafka::KafkaSinkFactory;
 
-use wp_connector_test_utils::{
-    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    sink::{
-        performance_runtime::{SinkPerformanceConfig, SinkPerformanceRuntime},
-        sink_info::SinkInfo,
-    },
-};
 use crate::kafka_common::{
     create_kafka_performance_config, init_kafka_topic_with_params, query_topic_count,
     wait_for_kafka_ready,
+};
+use wp_connector_test_utils::{
+    DockerComposeTool, RuntimeResult, SinkInfo, SinkPerformanceConfig, SinkPerformanceRuntime,
+    ToolResultExt,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "性能测试默认忽略，请按需手动执行"]
 async fn test_kafka_sink_performance() -> RuntimeResult<()> {
-    let docker_tool = DockerComposeTool::new("tests/kafka/component/docker-compose.yml").into_rt()?;
+    let docker_tool =
+        DockerComposeTool::new("tests/kafka/component/docker-compose.yml").into_rt()?;
 
     let params = create_kafka_performance_config();
     let sink_info = SinkInfo::new(KafkaSinkFactory, params.clone())
