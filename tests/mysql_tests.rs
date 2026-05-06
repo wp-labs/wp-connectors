@@ -4,10 +4,6 @@
 ))]
 
 #[cfg(any(feature = "external_integration", feature = "external_performance"))]
-#[path = "common/mod.rs"]
-mod common;
-
-#[cfg(any(feature = "external_integration", feature = "external_performance"))]
 #[path = "mysql/common.rs"]
 mod mysql_common;
 

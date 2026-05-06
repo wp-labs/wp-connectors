@@ -1,6 +1,5 @@
 #![cfg(all(feature = "clickhouse", feature = "external_integration"))]
 
-
 use wp_connectors::clickhouse::ClickHouseSinkFactory;
 
 use crate::clickhouse_common::{
@@ -8,14 +7,14 @@ use crate::clickhouse_common::{
     wait_for_clickhouse_ready,
 };
 use wp_connector_test_utils::{
-    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    SinkIntegrationRuntime, SinkInfo,
+    DockerComposeTool, RuntimeResult, SinkInfo, SinkIntegrationRuntime, ToolResultExt,
 };
 
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
 async fn test_clickhouse_sink_full_integration() -> RuntimeResult<()> {
-    let docker_tool = DockerComposeTool::new("tests/clickhouse/component/integration_tests.yml").into_rt()?;
+    let docker_tool =
+        DockerComposeTool::new("tests/clickhouse/component/integration_tests.yml").into_rt()?;
 
     let sink_info = SinkInfo::new(ClickHouseSinkFactory, create_clickhouse_test_config())
         .with_test_name("basic")

@@ -1,17 +1,13 @@
 #![cfg(all(feature = "http", feature = "external_performance"))]
 
-
 use std::time::Duration;
 use wp_connectors::http::HttpSinkFactory;
 
-use wp_connector_test_utils::{
-    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    sink::{
-        performance_runtime::{SinkPerformanceConfig, SinkPerformanceRuntime},
-        sink_info::SinkInfo,
-    },
-};
 use crate::http_common::{create_http_performance_scenarios, wait_for_http_nginx_ready};
+use wp_connector_test_utils::{
+    DockerComposeTool, RuntimeResult, SinkInfo, SinkPerformanceConfig, SinkPerformanceRuntime,
+    ToolResultExt,
+};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "性能测试默认忽略，请按需手动执行"]

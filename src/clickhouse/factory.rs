@@ -28,8 +28,7 @@ impl SinkFactory for ClickHouseSinkFactory {
             if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
                 return Err(SinkReason::sink(
                     "clickhouse.endpoint must start with http:// or https://",
-                )
-                .into());
+                ));
             }
         }
 
@@ -37,14 +36,14 @@ impl SinkFactory for ClickHouseSinkFactory {
         if let Some(timeout) = get_u64(spec, "timeout_secs")
             && timeout == 0
         {
-            return Err(SinkReason::sink("clickhouse.timeout_secs must be > 0").into());
+            return Err(SinkReason::sink("clickhouse.timeout_secs must be > 0"));
         }
 
         // 验证 max_retries
         if let Some(retries) = get_i64(spec, "max_retries")
             && retries < -1
         {
-            return Err(SinkReason::sink("clickhouse.max_retries must be >= -1").into());
+            return Err(SinkReason::sink("clickhouse.max_retries must be >= -1"));
         }
 
         Ok(())
@@ -109,7 +108,9 @@ fn ensure_not_empty(spec: &SinkSpec, key: &str) -> SinkResult<()> {
         .trim()
         .to_string();
     if value.is_empty() {
-        return Err(SinkReason::sink(format!("clickhouse.{key} must not be empty")).into());
+        return Err(SinkReason::sink(format!(
+            "clickhouse.{key} must not be empty"
+        )));
     }
     Ok(())
 }
@@ -121,7 +122,7 @@ fn required_param(spec: &SinkSpec, key: &str) -> SinkResult<String> {
         .and_then(Value::as_str)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| SinkReason::sink(format!("clickhouse.{key} must not be empty")).into())
+        .ok_or_else(|| SinkReason::sink(format!("clickhouse.{key} must not be empty")))
 }
 
 /// 读取可选字符串参数

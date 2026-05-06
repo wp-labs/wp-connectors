@@ -1,21 +1,20 @@
 #![cfg(all(feature = "postgres", feature = "external_integration"))]
 
-
 use wp_connectors::postgres::PostgresSinkFactory;
 
-use wp_connector_test_utils::{
-    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    SinkIntegrationRuntime, SinkInfo,
-};
 use crate::postgresql_common::{
     create_postgresql_test_config, init_postgresql_database, query_table_count,
     wait_for_postgresql_ready,
+};
+use wp_connector_test_utils::{
+    DockerComposeTool, RuntimeResult, SinkInfo, SinkIntegrationRuntime, ToolResultExt,
 };
 
 #[tokio::test]
 #[ignore = "集成测试默认忽略，请按需手动执行"]
 async fn test_postgresql_sink_full_integration() -> RuntimeResult<()> {
-    let docker_tool = DockerComposeTool::new("tests/postgresql/component/docker-compose.yml").into_rt()?;
+    let docker_tool =
+        DockerComposeTool::new("tests/postgresql/component/docker-compose.yml").into_rt()?;
 
     let sink_info = SinkInfo::new(PostgresSinkFactory, create_postgresql_test_config())
         .with_test_name("basic")

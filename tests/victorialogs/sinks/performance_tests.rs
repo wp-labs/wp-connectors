@@ -1,23 +1,20 @@
 #![cfg(all(feature = "victorialogs", feature = "external_performance"))]
 
-
 use wp_connectors::victorialogs::VictoriaLogSinkFactory;
 
-use wp_connector_test_utils::{
-    wp_connector_test_utils::{DockerComposeTool, RuntimeResult, ToolResultExt},
-    sink::{
-        performance_runtime::{SinkPerformanceConfig, SinkPerformanceRuntime},
-        sink_info::SinkInfo,
-    },
-};
 use crate::victorialogs_common::{
     create_vlogs_test_config, init_vlogs_state, query_vlogs_count, wait_for_vlogs_ready,
+};
+use wp_connector_test_utils::{
+    DockerComposeTool, RuntimeResult, SinkInfo, SinkPerformanceConfig, SinkPerformanceRuntime,
+    ToolResultExt,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "性能测试默认忽略，请按需手动执行"]
 async fn test_victorialogs_sink_performance() -> RuntimeResult<()> {
-    let docker_tool = DockerComposeTool::new("tests/victorialogs/component/docker-compose.yml").into_rt()?;
+    let docker_tool =
+        DockerComposeTool::new("tests/victorialogs/component/docker-compose.yml").into_rt()?;
 
     let sink_info = SinkInfo::new(VictoriaLogSinkFactory, create_vlogs_test_config())
         .with_test_name("baseline")

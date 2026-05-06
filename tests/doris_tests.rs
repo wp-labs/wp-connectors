@@ -2,12 +2,6 @@
     feature = "doris",
     any(feature = "external_integration", feature = "external_performance")
 ))]
-// Wrapper test to include tests under tests/kafka/ and shared helpers in tests/common.rs
-
-#[cfg(any(feature = "external_integration", feature = "external_performance"))]
-#[path = "common/mod.rs"]
-mod common;
-
 #[cfg(any(feature = "external_integration", feature = "external_performance"))]
 #[path = "doris/common.rs"]
 mod doris_common;
