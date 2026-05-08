@@ -9,7 +9,9 @@
       "Bash(python3:*)",
       "Bash(git remote prune:*)",
       "Bash(git pull:*)",
-      "Bash(git log HEAD~5..HEAD --pretty=format:\"%h %s%n%b\" --no-walk=unsorted 2>/dev/null || git log HEAD~5..HEAD --pretty=format:\"%h %s\")"
+      "Bash(git log HEAD~5..HEAD --pretty=format:\"%h %s%n%b\" --no-walk=unsorted 2>/dev/null || git log HEAD~5..HEAD --pretty=format:\"%h %s\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
