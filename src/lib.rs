@@ -17,6 +17,8 @@ pub mod mysql;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 
+#[cfg(feature = "dmdb")]
+pub mod dmdb;
 // ClickHouse
 #[cfg(feature = "clickhouse")]
 pub mod clickhouse;

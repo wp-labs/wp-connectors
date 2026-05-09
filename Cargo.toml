@@ -21,6 +21,8 @@ wp-error =  "0.10"
 wp-specs =  "0.10"
 wp-conf-base = "0.4"
 wp-data-fmt = "0.2"
+# 兼容旧版 unixODBC / Driver Manager，避免默认声明 ODBC 3.80。
+odbc-api = { version = "25.0.0", default-features = false, features = ["odbc_version_3_5"] }
 
 orion_exp = "0.1"
 orion-error = "0.8"
@@ -67,15 +69,16 @@ repository = "https://github.com/wp-labs/wp-connectors"
 homepage = "https://github.com/wp-labs/wp-connectors"
 
 [features]
-default = ["kafka", "mysql", "postgres", "prometheus", "victoriametrics", "victorialogs", "doris", "count", "clickhouse", "elasticsearch", "http"]
+default = ["kafka", "mysql", "postgres", "prometheus", "victoriametrics", "victorialogs", "doris", "count", "clickhouse", "elasticsearch", "http", "dmdb"]
 kafka = [ "dep:rdkafka-wrap"]
 mysql = []
 postgres = []
+dmdb = ["odbc-api"]
 count = []
 victorialogs = []
 external_integration = []
 external_performance = []
-full = ["kafka", "mysql", "postgres", "prometheus", "clickhouse", "elasticsearch", "victoriametrics", "victorialogs", "doris", "http"]
+full = ["kafka", "mysql", "postgres", "dmdb", "prometheus", "clickhouse", "elasticsearch", "victoriametrics", "victorialogs", "doris", "http"]
 prometheus = [
     "dep:actix-web",
     "dep:prometheus",
@@ -111,6 +114,7 @@ orion-error = { workspace = true }
 orion_conf = { workspace = true }
 
 async-trait = { workspace = true }
+anyhow = { workspace = true }
 chrono = { workspace = true }
 log = { workspace = true }
 rdkafka-wrap = { workspace = true, optional = true  }
@@ -124,6 +128,8 @@ educe = { workspace = true }
 derive_more = "2"
 sea-orm = { workspace = true }
 sqlx = { workspace = true }
+
+odbc-api = { workspace = true, optional = true }
 
 actix-web = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
