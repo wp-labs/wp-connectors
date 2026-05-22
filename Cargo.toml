@@ -15,7 +15,7 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 # WP Core Dependencies
 wp-connector-api = "0.10"
 wp-parse-api =  "0.10"
-wp-model-core = "0.8"
+wp-model-core = "0.8.9"
 wp-log =  "0.4"
 wp-error =  "0.10"
 wp-specs =  "0.10"
