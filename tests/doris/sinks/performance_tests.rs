@@ -35,9 +35,10 @@ async fn test_doris_sink_performance() -> RuntimeResult<()> {
 
     let config = SinkPerformanceConfig::default()
         .with_total_records(PERFORMANCE_RECORD_COUNT)
-        .with_batch_size(10_000)
+        .with_batch_size(20_000)
         .with_task_count(8);
     let runtime = SinkPerformanceRuntime::new(docker_tool, vec![sink_info], config);
     runtime.run().await?;
+    println!("动态表数量{}",PERFORMANCE_DYNAMIC_TABLE_COUNT);
     Ok(())
 }

@@ -24,7 +24,7 @@ pub const TEST_DORIS_DYNAMIC_TABLE_TEMPLATE: &str = "wp_nginx_#{referer}";
 /// 集成测试预建的动态表数量，记录会按 `wp_event_id % 表数量` 路由。
 pub const INTEGRATION_DYNAMIC_TABLE_COUNT: i64 = 3;
 /// 性能测试预建的动态表数量，独立于性能测试总记录数。
-pub const PERFORMANCE_DYNAMIC_TABLE_COUNT: i64 = 1;
+pub const PERFORMANCE_DYNAMIC_TABLE_COUNT: i64 = 4;
 /// 性能测试总记录数。
 pub const PERFORMANCE_RECORD_COUNT: usize = 1000_0000;
 /// Doris 测试用户名。
