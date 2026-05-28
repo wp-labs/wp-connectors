@@ -137,7 +137,8 @@ base64 = { workspace = true, optional = true }
 sysinfo = { version = "0.38", default-features = false, features = ["system"], optional = true }
 
 [dev-dependencies]
-wp-connector-test-utils = { git = "https://github.com/wp-labs/wp-connector-test-utils.git", tag = "v0.2.1"}
+wp-connector-test-utils = { git = "https://github.com/wp-labs/wp-connector-test-utils.git", tag = "v0.2.2"}
+# wp-connector-test-utils = { path = "../wp-connector-test-utils" }
 anyhow = { workspace = true }
 env_logger = { workspace = true }
 httpmock = "0.8"

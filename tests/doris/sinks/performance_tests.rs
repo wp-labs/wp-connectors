@@ -3,7 +3,9 @@
 use wp_connectors::doris::DorisSinkFactory;
 
 use crate::doris_common::{
-    create_doris_test_config, init_doris_database, query_table_count, wait_for_doris_sink_ready,
+    PERFORMANCE_DYNAMIC_TABLE_COUNT, PERFORMANCE_RECORD_COUNT, create_doris_test_config,
+    create_doris_test_records, init_doris_performance_database, query_table_count,
+    wait_for_doris_sink_ready,
 };
 use wp_connector_test_utils::{
     DockerComposeTool, RuntimeResult, SinkInfo, SinkPerformanceConfig, SinkPerformanceRuntime,
@@ -16,19 +18,25 @@ use wp_connector_test_utils::{
 async fn test_doris_sink_performance() -> RuntimeResult<()> {
     let docker_tool =
         DockerComposeTool::new("tests/doris/component/performance_tests.yml").into_rt()?;
-    // 添加sink信息、包括sink工厂、测试的初始化方法，基础方法
+
     let sink_info = SinkInfo::new(DorisSinkFactory, create_doris_test_config())
-        .with_test_name("baseline")
+        .with_test_name("dynamic_table")
         .with_async_count_fn(|_params| async { query_table_count().await })
-        .with_async_init(|| async { init_doris_database().await })
-        .with_async_wait_ready(|_params| async { wait_for_doris_sink_ready().await });
-    //性能测试配置
+        .with_async_init(|| async { init_doris_performance_database().await })
+        .with_async_wait_ready(|_params| async { wait_for_doris_sink_ready().await })
+        .with_record_builder(|start_id, count| {
+            create_doris_test_records(
+                start_id,
+                count,
+                PERFORMANCE_DYNAMIC_TABLE_COUNT,
+                "performance_test",
+            )
+        });
+
     let config = SinkPerformanceConfig::default()
-        .with_total_records(1000_0000)
-        //批量大小
-        .with_batch_size(1_0000)
-        //并行度
-        .with_task_count(4);
+        .with_total_records(PERFORMANCE_RECORD_COUNT)
+        .with_batch_size(10_000)
+        .with_task_count(8);
     let runtime = SinkPerformanceRuntime::new(docker_tool, vec![sink_info], config);
     runtime.run().await?;
     Ok(())

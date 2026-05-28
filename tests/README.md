@@ -305,7 +305,7 @@ runtime.run(true).await?;
 cargo test --tests --features external_integration integration_tests:: -- --nocapture --ignored --test-threads=1
 
 # 全部 sink 性能测试
-cargo test --release --tests --features external_performance performance_tests:: -- --nocapture --ignored
+cargo test --release --release --tests --features external_performance performance_tests:: -- --nocapture --ignored
 
 # Kafka source 集成测试
 cargo test --package wp-connectors --test kafka_tests --features kafka,external_integration source_integration_tests::test_kafka_source_basic_integration -- --exact --nocapture --ignored
@@ -314,47 +314,47 @@ cargo test --package wp-connectors --test kafka_tests --features kafka,external_
 cargo test --package wp-connectors --test kafka_tests --features kafka,external_integration integration_tests::test_kafka_sink_full_integration -- --exact --nocapture --ignored
 
 # Kafka sink 性能测试
-cargo test --package wp-connectors --test kafka_tests --features kafka,external_performance performance_tests::test_kafka_sink_performance -- --exact --nocapture --ignored
+cargo test --release --package wp-connectors --test kafka_tests --features kafka,external_performance performance_tests::test_kafka_sink_performance -- --exact --nocapture --ignored
 
 # Doris sink 集成测试
 cargo test --package wp-connectors --test doris_tests integration_tests::test_doris_sink_full_integration --features doris,external_integration -- --exact --nocapture --ignored
 
 # Doris sink 性能测试
-cargo test --package wp-connectors --test doris_tests performance_tests::test_doris_sink_performance --features doris,external_performance -- --exact --nocapture --ignored
+cargo test --release --package wp-connectors --test doris_tests performance_tests::test_doris_sink_performance --features doris,external_performance -- --exact --nocapture --ignored
 
 # HTTP sink 集成测试
 cargo test --package wp-connectors --test http_tests --features http,external_integration integration_tests::test_http_sink_full_integration -- --exact --nocapture --ignored
 
 # HTTP sink 性能测试
-cargo test --package wp-connectors --test http_tests --features http,external_performance performance_tests::test_http_sink_performance -- --exact --nocapture --ignored
+cargo test --release --package wp-connectors --test http_tests --features http,external_performance performance_tests::test_http_sink_performance -- --exact --nocapture --ignored
 
 # ClickHouse sink 集成测试
 cargo test --package wp-connectors --test clickhouse_tests --features clickhouse,external_integration integration_tests::test_clickhouse_sink_full_integration -- --exact --nocapture --ignored
 
 # ClickHouse sink 性能测试
-cargo test --package wp-connectors --test clickhouse_tests --features clickhouse,external_performance performance_tests::test_clickhouse_sink_performance -- --exact --nocapture --ignored
+cargo test --release --package wp-connectors --test clickhouse_tests --features clickhouse,external_performance performance_tests::test_clickhouse_sink_performance -- --exact --nocapture --ignored
 
 # MySQL sink 集成测试
 cargo test --package wp-connectors --test mysql_tests --features mysql,external_integration integration_tests::test_mysql_sink_full_integration -- --exact --nocapture --ignored
 
 # MySQL sink 性能测试
-cargo test --package wp-connectors --test mysql_tests --features mysql,external_performance performance_tests::test_mysql_sink_performance -- --exact --nocapture --ignored
+cargo test --release --package wp-connectors --test mysql_tests --features mysql,external_performance performance_tests::test_mysql_sink_performance -- --exact --nocapture --ignored
 
 # Elasticsearch sink 集成测试
 cargo test --package wp-connectors --test elasticsearch_tests --features elasticsearch,external_integration integration_tests::test_elasticsearch_sink_full_integration -- --exact --nocapture --ignored
 
 # Elasticsearch sink 性能测试
-cargo test --package wp-connectors --test elasticsearch_tests --features elasticsearch,external_performance performance_tests::test_elasticsearch_sink_performance -- --exact --nocapture --ignored
+cargo test --release --package wp-connectors --test elasticsearch_tests --features elasticsearch,external_performance performance_tests::test_elasticsearch_sink_performance -- --exact --nocapture --ignored
 
 # PostgreSQL sink 集成测试
 cargo test --package wp-connectors --test postgresql_tests --features postgres,external_integration integration_tests::test_postgresql_sink_full_integration -- --exact --nocapture --ignored
 
 # PostgreSQL sink 性能测试
-cargo test --package wp-connectors --test postgresql_tests --features postgres,external_performance performance_tests::test_postgresql_sink_performance -- --exact --nocapture --ignored
+cargo test --release --package wp-connectors --test postgresql_tests --features postgres,external_performance performance_tests::test_postgresql_sink_performance -- --exact --nocapture --ignored
 
 # VictoriaLogs sink 集成测试
 cargo test --package wp-connectors --test victorialogs_tests --features victorialogs,external_integration integration_tests::test_victorialogs_sink_full_integration -- --exact --nocapture --ignored
 
 # VictoriaLogs sink 性能测试
-cargo test --package wp-connectors --test victorialogs_tests --features victorialogs,external_performance performance_tests::test_victorialogs_sink_performance -- --exact --nocapture --ignored
+cargo test --release --package wp-connectors --test victorialogs_tests --features victorialogs,external_performance performance_tests::test_victorialogs_sink_performance -- --exact --nocapture --ignored
 ```
