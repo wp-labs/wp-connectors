@@ -37,7 +37,10 @@ static INSTANCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub struct DorisSink {
     client: Client,
-    url: String, // 预先构建的完整 URL
+    endpoint: String,
+    database: String,
+    table_template: String,
+    template_fields: Vec<String>,
     user: String,
     password: String,
     max_retries: i32,
@@ -72,6 +75,11 @@ enum LoadOutcome {
     Error(String),
 }
 
+struct DorisTableBatch {
+    table_name: String,
+    payload: Vec<u8>,
+}
+
 impl DorisSink {
     /// 构建 Doris Sink，使用 Stream Load API。
     ///
@@ -87,18 +95,17 @@ impl DorisSink {
             .build()
             .source_raw_err(SinkReason::Sink, "doris client build")?;
 
-        // 预先构建完整的 Stream Load URL
-        let url = format!(
-            "{}/api/{}/{}/_stream_load",
-            config.endpoint, config.database, config.table
-        );
+        let template_fields = parse_template_fields(&config.table)?;
 
         // 从全局原子变量获取递增的实例 ID
         let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
 
         Ok(Self {
             client,
-            url,
+            endpoint: config.endpoint,
+            database: config.database,
+            table_template: config.table,
+            template_fields,
             user: config.user,
             password: config.password,
             max_retries: config.max_retries,
@@ -125,29 +132,62 @@ impl DorisSink {
         )
     }
 
-    /// 将 DataRecord 转换为 JSON 对象。
-    ///
-    /// # Arguments
-    /// * `record` - 数据记录
-    ///
-    /// # Returns
-    /// 将批量记录转换为 NDJSON 格式（每行一个 JSON 对象）。
-    ///
-    /// # Arguments
-    /// * `records` - 数据记录列表
-    ///
-    /// # Returns
-    /// * `SinkResult<Bytes>` - NDJSON 字节流
-    fn records_to_ndjson(&self, records: &[Arc<DataRecord>]) -> SinkResult<Bytes> {
-        let mut buffer = Vec::new();
+    fn write_record_json_line(&self, buffer: &mut Vec<u8>, record: &DataRecord) -> SinkResult<()> {
+        serde_json::to_writer(&mut *buffer, &JsonRecord(record, &self.template_fields))
+            .source_raw_err(SinkReason::Sink, "json serialization failed")?;
+        buffer.push(b'\n');
+        Ok(())
+    }
 
-        for record in records {
-            serde_json::to_writer(&mut buffer, &JsonRecord(record.as_ref()))
-                .source_raw_err(SinkReason::Sink, "json serialization failed")?;
-            buffer.push(b'\n');
+    fn build_table_name(&self, record: &DataRecord) -> SinkResult<String> {
+        let mut table_name = self.table_template.clone();
+
+        for field_name in &self.template_fields {
+            let field = record
+                .items
+                .iter()
+                .find(|field| field.get_name() == field_name)
+                .ok_or_else(|| {
+                    sink_error(format!(
+                        "doris dynamic table field '{}' is missing in template '{}'",
+                        field_name, self.table_template
+                    ))
+                })?;
+
+            let field_value = match field.get_value() {
+                Value::Chars(value) => value.as_str(),
+                _ => {
+                    return Err(sink_error(format!(
+                        "doris dynamic table field '{}' must be a string",
+                        field_name
+                    )));
+                }
+            };
+
+            table_name = table_name.replace(&format!("#{{{}}}", field_name), field_value);
         }
 
-        Ok(Bytes::from(buffer))
+        Ok(table_name)
+    }
+
+    fn records_to_table_batches(
+        &self,
+        records: Vec<Arc<DataRecord>>,
+    ) -> SinkResult<Vec<DorisTableBatch>> {
+        let mut batches: HashMap<String, DorisTableBatch> = HashMap::new();
+
+        for record in records {
+            let table_name = self.build_table_name(record.as_ref())?;
+            let batch = batches
+                .entry(table_name.clone())
+                .or_insert_with(|| DorisTableBatch {
+                    table_name,
+                    payload: Vec::new(),
+                });
+            self.write_record_json_line(&mut batch.payload, record.as_ref())?;
+        }
+
+        Ok(batches.into_values().collect())
     }
 
     /// 执行 Stream Load 请求。
@@ -160,15 +200,21 @@ impl DorisSink {
     /// # Returns
     ///
     /// * `SinkResult<()>` - 成功或错误
-    async fn stream_load(&self, label: &str, data: Bytes) -> SinkResult<()> {
+    async fn stream_load(&self, batch: DorisTableBatch) -> SinkResult<()> {
+        let data = Bytes::from(batch.payload);
+        let label = self.generate_label(&data);
+        let url = format!(
+            "{}/api/{}/{}/_stream_load",
+            self.endpoint, self.database, batch.table_name
+        );
         let mut retries = 0i32;
 
         loop {
             let mut request = self
                 .client
-                .put(&self.url)
+                .put(&url)
                 .basic_auth(&self.user, Some(&self.password))
-                .header("label", label)
+                .header("label", label.as_str())
                 .header("format", "json")
                 .header("read_json_by_line", "true")
                 .header("Expect", "100-continue")
@@ -189,7 +235,12 @@ impl DorisSink {
 
                     match Self::classify_load_response(status, &body) {
                         LoadOutcome::Success => return Ok(()),
-                        LoadOutcome::Error(message) => return Err(sink_error(message)),
+                        LoadOutcome::Error(message) => {
+                            return Err(sink_error(format!(
+                                "stream load failed for table {}: {}",
+                                batch.table_name, message
+                            )));
+                        }
                         LoadOutcome::Retry(reason) => {
                             let retry_limit = if self.max_retries < 0 {
                                 "unlimited".to_string()
@@ -199,13 +250,14 @@ impl DorisSink {
 
                             if self.max_retries >= 0 && retries >= self.max_retries {
                                 return Err(sink_error(format!(
-                                    "max retries ({}) exceeded: {}",
-                                    self.max_retries, reason
+                                    "max retries ({}) exceeded for table {}: {}",
+                                    self.max_retries, batch.table_name, reason
                                 )));
                             }
 
                             log::warn!(
-                                "stream load retry needed: label={}, reason={}, retry={}/{}",
+                                "stream load retry needed: table={}, label={}, reason={}, retry={}/{}",
+                                batch.table_name,
                                 label,
                                 reason,
                                 retries + 1,
@@ -217,8 +269,8 @@ impl DorisSink {
                 Err(e) => {
                     if self.max_retries >= 0 && retries >= self.max_retries {
                         return Err(sink_error(format!(
-                            "max retries ({}) exceeded: request failed: {}",
-                            self.max_retries, e
+                            "max retries ({}) exceeded for table {}: request failed: {}",
+                            self.max_retries, batch.table_name, e
                         )));
                     }
 
@@ -228,7 +280,8 @@ impl DorisSink {
                         self.max_retries.to_string()
                     };
                     log::warn!(
-                        "request failed: {}, retry={}/{}",
+                        "request failed: table={}, error={}, retry={}/{}",
+                        batch.table_name,
                         e,
                         retries + 1,
                         retry_limit
@@ -240,15 +293,6 @@ impl DorisSink {
             let backoff_ms = 1000 * 2_u64.pow(retries.min(10) as u32);
             tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
         }
-    }
-
-    /// 刷新缓冲区，将所有缓存的记录发送到 Doris。
-    ///
-    /// # Returns
-    /// * `SinkResult<()>` - 成功或错误
-    async fn flush_buffer(&mut self) -> SinkResult<()> {
-        // No-op: buffering is disabled, records are sent immediately
-        Ok(())
     }
 
     fn ensure_running(&self) -> SinkResult<()> {
@@ -340,9 +384,6 @@ impl AsyncCtrl for DorisSink {
         if self.stopped {
             return Ok(());
         }
-
-        // 停止前刷新缓冲区，确保没有数据丢失
-        self.flush_buffer().await?;
         self.stopped = true;
         Ok(())
     }
@@ -372,10 +413,9 @@ impl AsyncRecordSink for DorisSink {
         // 开始统计
         self.time_stats.start_stat(data.len() as u64);
 
-        // 生成label
-        let ndjson = self.records_to_ndjson(&data)?;
-        let label = self.generate_label(&ndjson);
-        self.stream_load(&label, ndjson).await?;
+        for batch in self.records_to_table_batches(data)? {
+            self.stream_load(batch).await?;
+        }
 
         // 结束统计
         self.time_stats.end_stat();
@@ -414,6 +454,36 @@ fn sink_error(msg: impl Into<String>) -> SinkError {
     SinkReason::sink(msg)
 }
 
+fn parse_template_fields(template: &str) -> SinkResult<Vec<String>> {
+    let mut fields = Vec::new();
+    let mut rest = template;
+
+    while let Some(start) = rest.find("#{") {
+        let after_start = &rest[start + 2..];
+        let Some(end) = after_start.find('}') else {
+            return Err(sink_error(format!(
+                "invalid doris table template '{}': missing closing '}}'",
+                template
+            )));
+        };
+
+        let field = &after_start[..end];
+        if field.is_empty() {
+            return Err(sink_error(format!(
+                "invalid doris table template '{}': empty placeholder",
+                template
+            )));
+        }
+
+        if !fields.iter().any(|existing| existing == field) {
+            fields.push(field.to_string());
+        }
+        rest = &after_start[end + 1..];
+    }
+
+    Ok(fields)
+}
+
 fn fingerprint_bytes(bytes: &[u8]) -> (u64, u64) {
     const OFFSET_A: u64 = 0xcbf29ce484222325;
     const OFFSET_B: u64 = 0x84222325cbf29ce4;
@@ -434,7 +504,7 @@ fn fingerprint_bytes(bytes: &[u8]) -> (u64, u64) {
     (hash_a, hash_b)
 }
 
-struct JsonRecord<'a>(&'a DataRecord);
+struct JsonRecord<'a>(&'a DataRecord, &'a [String]);
 
 impl Serialize for JsonRecord<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -445,12 +515,17 @@ impl Serialize for JsonRecord<'_> {
             .0
             .items
             .iter()
-            .filter(|field| *field.get_meta() != DataType::Ignore)
+            .filter(|field| {
+                *field.get_meta() != DataType::Ignore
+                    && !self.1.iter().any(|name| name == field.get_name())
+            })
             .count();
         let mut map = serializer.serialize_map(Some(field_count))?;
 
         for field in &self.0.items {
-            if *field.get_meta() == DataType::Ignore {
+            if *field.get_meta() == DataType::Ignore
+                || self.1.iter().any(|name| name == field.get_name())
+            {
                 continue;
             }
 
@@ -541,6 +616,19 @@ mod tests {
         )
     }
 
+    fn test_config_with_table(table: &str) -> DorisSinkConfig {
+        DorisSinkConfig::new(
+            "http://localhost:8040".into(),
+            "demo".into(),
+            table.into(),
+            "root".into(),
+            "".into(),
+            Some(1),
+            Some(0),
+            None,
+        )
+    }
+
     async fn create_mock_sink(server: &MockServer, max_retries: i32) -> DorisSink {
         let mut headers = HashMap::new();
         headers.insert("strict_mode".into(), "true".into());
@@ -562,6 +650,15 @@ mod tests {
     fn sample_record() -> DataRecord {
         let mut record = DataRecord::default();
         record.append(DataField::from_digit("id", 1));
+        record.append(DataField::from_chars("name", "alice"));
+        record
+    }
+
+    fn sample_record_with_route(id: i64, tenant: &str, day: &str) -> DataRecord {
+        let mut record = DataRecord::default();
+        record.append(DataField::from_digit("id", id));
+        record.append(DataField::from_chars("tenant", tenant));
+        record.append(DataField::from_chars("day", day));
         record.append(DataField::from_chars("name", "alice"));
         record
     }
@@ -664,7 +761,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn record_to_json_preserves_value_types() {
+    async fn write_record_json_line_preserves_value_types() {
         let sink = DorisSink::new(test_config()).await.unwrap();
         let mut record = DataRecord::default();
         record.append(DataField::from_chars("zip_code", "00123"));
@@ -682,13 +779,32 @@ mod tests {
         );
         record.append(DataField::new(DataType::Obj, "meta", Value::Obj(nested)));
 
-        let encoded = sink.records_to_ndjson(&[Arc::new(record)]).unwrap();
-        let json: serde_json::Value = serde_json::from_slice(encoded.as_ref()).unwrap();
+        let mut encoded = Vec::new();
+        sink.write_record_json_line(&mut encoded, &record).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
 
         assert_eq!(json["zip_code"], serde_json::Value::String("00123".into()));
         assert_eq!(json["enabled"], serde_json::Value::Bool(true));
         assert_eq!(json["meta"]["count"], serde_json::Value::Number(7.into()));
         assert!(json["meta"].get("ignored").is_none());
+        assert_eq!(encoded.last(), Some(&b'\n'));
+    }
+
+    #[tokio::test]
+    async fn write_record_json_line_removes_template_fields() {
+        let sink = DorisSink::new(test_config_with_table("events_#{tenant}_#{day}"))
+            .await
+            .unwrap();
+        let record = sample_record_with_route(1, "acme", "20260527");
+
+        let mut encoded = Vec::new();
+        sink.write_record_json_line(&mut encoded, &record).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+
+        assert_eq!(json["id"], serde_json::Value::Number(1.into()));
+        assert_eq!(json["name"], serde_json::Value::String("alice".into()));
+        assert!(json.get("tenant").is_none());
+        assert!(json.get("day").is_none());
     }
 
     #[tokio::test]
@@ -696,12 +812,174 @@ mod tests {
         let sink = DorisSink::new(test_config()).await.unwrap();
         let record = sample_record();
 
-        let payload = sink.records_to_ndjson(&[Arc::new(record.clone())]).unwrap();
+        let mut payload = Vec::new();
+        sink.write_record_json_line(&mut payload, &record).unwrap();
+        let payload = Bytes::from(payload);
         let label_a = sink.generate_label(&payload);
-        let payload_again = sink.records_to_ndjson(&[Arc::new(record)]).unwrap();
+
+        let mut payload_again = Vec::new();
+        sink.write_record_json_line(&mut payload_again, &record)
+            .unwrap();
+        let payload_again = Bytes::from(payload_again);
         let label_b = sink.generate_label(&payload_again);
 
         assert_eq!(label_a, label_b);
+    }
+
+    #[tokio::test]
+    async fn records_to_table_batches_groups_by_dynamic_table() {
+        let sink = DorisSink::new(test_config_with_table("events_#{tenant}_#{day}"))
+            .await
+            .unwrap();
+
+        let mut batches = sink
+            .records_to_table_batches(vec![
+                Arc::new(sample_record_with_route(1, "acme", "20260527")),
+                Arc::new(sample_record_with_route(2, "acme", "20260527")),
+                Arc::new(sample_record_with_route(3, "beta", "20260527")),
+            ])
+            .unwrap();
+        batches.sort_by(|left, right| left.table_name.cmp(&right.table_name));
+
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].table_name, "events_acme_20260527");
+        assert_eq!(batches[1].table_name, "events_beta_20260527");
+
+        let acme_payload = String::from_utf8(batches[0].payload.clone()).unwrap();
+        assert_eq!(acme_payload.lines().count(), 2);
+        assert!(acme_payload.contains("\"id\":1"));
+        assert!(acme_payload.contains("\"id\":2"));
+        assert!(!acme_payload.contains("tenant"));
+        assert!(!acme_payload.contains("day"));
+
+        let beta_payload = String::from_utf8(batches[1].payload.clone()).unwrap();
+        assert_eq!(beta_payload.lines().count(), 1);
+        assert!(beta_payload.contains("\"id\":3"));
+        assert!(!beta_payload.contains("tenant"));
+        assert!(!beta_payload.contains("day"));
+    }
+
+    #[tokio::test]
+    async fn dynamic_table_groups_records_and_removes_template_fields() {
+        let server = MockServer::start_async().await;
+        let mut sink = DorisSink::new(DorisSinkConfig::new(
+            server.base_url(),
+            "demo".into(),
+            "events_#{tenant}_#{day}".into(),
+            "root".into(),
+            "".into(),
+            Some(5),
+            Some(0),
+            None,
+        ))
+        .await
+        .unwrap();
+
+        let tenant_a_mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/api/demo/events_acme_20260527/_stream_load")
+                    .header("format", "json")
+                    .header("read_json_by_line", "true")
+                    .body_includes("\"id\":1")
+                    .body_includes("\"id\":2")
+                    .body_includes("\"name\":\"alice\"")
+                    .body_not("tenant")
+                    .body_not("day");
+                then.status(200).json_body_obj(&serde_json::json!({
+                    "Status": "Success",
+                    "NumberLoadedRows": 2,
+                    "NumberFilteredRows": 0
+                }));
+            })
+            .await;
+        let tenant_b_mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/api/demo/events_beta_20260527/_stream_load")
+                    .header("format", "json")
+                    .header("read_json_by_line", "true")
+                    .body_includes("\"id\":3")
+                    .body_includes("\"name\":\"alice\"")
+                    .body_not("tenant")
+                    .body_not("day");
+                then.status(200).json_body_obj(&serde_json::json!({
+                    "Status": "Success",
+                    "NumberLoadedRows": 1,
+                    "NumberFilteredRows": 0
+                }));
+            })
+            .await;
+
+        sink.sink_records(vec![
+            Arc::new(sample_record_with_route(1, "acme", "20260527")),
+            Arc::new(sample_record_with_route(2, "acme", "20260527")),
+            Arc::new(sample_record_with_route(3, "beta", "20260527")),
+        ])
+        .await
+        .unwrap();
+
+        tenant_a_mock.assert_calls_async(1).await;
+        tenant_b_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn dynamic_table_accepts_repeated_placeholder() {
+        let sink = DorisSink::new(test_config_with_table("events_#{tenant}_#{tenant}"))
+            .await
+            .unwrap();
+        let record = sample_record_with_route(1, "acme", "20260527");
+
+        assert_eq!(sink.build_table_name(&record).unwrap(), "events_acme_acme");
+        assert_eq!(sink.template_fields, vec!["tenant"]);
+    }
+
+    #[tokio::test]
+    async fn dynamic_table_rejects_invalid_template() {
+        let err = match DorisSink::new(test_config_with_table("events_#{tenant")).await {
+            Ok(_) => panic!("invalid template should fail"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("missing closing"))
+        );
+    }
+
+    #[tokio::test]
+    async fn dynamic_table_rejects_missing_field() {
+        let sink = DorisSink::new(test_config_with_table("events_#{tenant}"))
+            .await
+            .unwrap();
+        let err = sink.build_table_name(&sample_record()).unwrap_err();
+
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("is missing"))
+        );
+    }
+
+    #[tokio::test]
+    async fn dynamic_table_rejects_non_string_field() {
+        let sink = DorisSink::new(test_config_with_table("events_#{tenant}"))
+            .await
+            .unwrap();
+        let mut record = DataRecord::default();
+        record.append(DataField::from_digit("tenant", 1));
+
+        let err = sink.build_table_name(&record).unwrap_err();
+
+        assert_eq!(err.reason(), &SinkReason::Sink);
+        assert!(
+            err.detail()
+                .as_deref()
+                .is_some_and(|m| m.contains("must be a string"))
+        );
     }
 
     #[tokio::test]
@@ -709,7 +987,9 @@ mod tests {
         let server = MockServer::start_async().await;
         let mut sink = create_mock_sink(&server, 1).await;
         let record = sample_record();
-        let payload = sink.records_to_ndjson(&[Arc::new(record.clone())]).unwrap();
+        let mut payload = Vec::new();
+        sink.write_record_json_line(&mut payload, &record).unwrap();
+        let payload = Bytes::from(payload);
         let expected_label = sink.generate_label(&payload);
 
         let running_mock = server

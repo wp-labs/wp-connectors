@@ -2,3 +2,9 @@ target/
 .DS_Store
 _gal/.report
 Cargo.lock
+
+.idea
+.kiro
+.*
+.run
+temp

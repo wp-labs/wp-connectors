@@ -4,7 +4,8 @@
 use wp_connectors::doris::DorisSinkFactory;
 
 use crate::doris_common::{
-    create_doris_test_config, init_doris_database, query_table_count, wait_for_doris_sink_ready,
+    INTEGRATION_DYNAMIC_TABLE_COUNT, create_doris_test_config, create_doris_test_records,
+    init_doris_database, query_table_count, wait_for_doris_sink_ready,
 };
 use wp_connector_test_utils::{
     DockerComposeTool, RuntimeResult, SinkInfo, SinkIntegrationRuntime, ToolResultExt,
@@ -19,14 +20,21 @@ async fn test_doris_sink_full_integration() -> RuntimeResult<()> {
     let docker_tool =
         DockerComposeTool::new("tests/doris/component/integration_tests.yml").into_rt()?;
 
-    // 2. 创建 Sink 集成测试信息
+    // 使用框架的生命周期和重启验证，只覆盖测试记录生成逻辑。
     let sink_info = SinkInfo::new(DorisSinkFactory, create_doris_test_config())
-        .with_test_name("basic")
+        .with_test_name("dynamic_table")
         .with_async_count_fn(|_params| async { query_table_count().await })
         .with_async_wait_ready(|_params| async { wait_for_doris_sink_ready().await })
-        .with_async_init(|| async { init_doris_database().await });
+        .with_async_init(|| async { init_doris_database().await })
+        .with_record_builder(|start_id, count| {
+            create_doris_test_records(
+                start_id,
+                count,
+                INTEGRATION_DYNAMIC_TABLE_COUNT,
+                "integration_test",
+            )
+        });
 
-    // 3. 创建运行时并执行测试
     let runtime = SinkIntegrationRuntime::new(docker_tool, vec![sink_info]);
     runtime.run(true).await?;
 

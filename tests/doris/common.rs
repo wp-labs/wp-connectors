@@ -7,16 +7,35 @@ use sea_orm::{ConnectOptions as SeaConnectOptions, ConnectionTrait, Database};
 use serde_json::json;
 use std::str::FromStr;
 use wp_connector_api::ParamMap;
+use wp_model_core::model::{DataField, DataRecord};
 
+/// Doris BE HTTP 地址，用于 Stream Load 写入。
 pub const TEST_DORIS_ENDPOINT: &str = "http://localhost:8040";
+/// Doris MySQL 协议地址，用于建库建表、就绪探测和数量查询。
 pub const TEST_DORIS_MYSQL_HOST: &str = "127.0.0.1";
+/// Doris MySQL 协议端口。
 pub const TEST_DORIS_MYSQL_PORT: u16 = 9030;
+/// Doris 测试数据库名。
 pub const TEST_DORIS_DB: &str = "test_db";
+/// Doris 动态表名前缀，实际表名会拼成 `wp_nginx_<referer>`。
 pub const TEST_DORIS_TABLE: &str = "wp_nginx";
+/// Doris sink 动态表模板；测试记录中的 `referer` 字段会替换占位符。
+pub const TEST_DORIS_DYNAMIC_TABLE_TEMPLATE: &str = "wp_nginx_#{referer}";
+/// 集成测试预建的动态表数量，记录会按 `wp_event_id % 表数量` 路由。
+pub const INTEGRATION_DYNAMIC_TABLE_COUNT: i64 = 3;
+/// 性能测试预建的动态表数量，独立于性能测试总记录数。
+pub const PERFORMANCE_DYNAMIC_TABLE_COUNT: i64 = 1;
+/// 性能测试总记录数。
+pub const PERFORMANCE_RECORD_COUNT: usize = 1000_0000;
+/// Doris 测试用户名。
 pub const TEST_DORIS_USER: &str = "root";
+/// Doris 测试密码；None 表示空密码。
 pub const TEST_DORIS_PASSWORD: Option<&str> = None;
+/// Doris 就绪探测最大次数。
 const DORIS_READY_ATTEMPTS: usize = 30;
+/// Doris 就绪探测间隔秒数。
 const DORIS_READY_INTERVAL_SECS: u64 = 2;
+/// 连续探测成功次数，达到后才认为 Doris 集群稳定就绪。
 const DORIS_READY_STABLE_PROBES: usize = 3;
 
 pub fn doris_mysql_options(database: Option<&str>) -> Result<MySqlConnectOptions> {
@@ -82,7 +101,7 @@ pub fn create_doris_test_config() -> ParamMap {
     let mut params = ParamMap::new();
     params.insert("endpoint".into(), json!(TEST_DORIS_ENDPOINT));
     params.insert("database".into(), json!(TEST_DORIS_DB));
-    params.insert("table".into(), json!(TEST_DORIS_TABLE));
+    params.insert("table".into(), json!(TEST_DORIS_DYNAMIC_TABLE_TEMPLATE));
     params.insert("user".into(), json!(TEST_DORIS_USER));
     params.insert("password".into(), json!(TEST_DORIS_PASSWORD.unwrap_or("")));
     params.insert("timeout_secs".into(), json!(30));
@@ -90,17 +109,74 @@ pub fn create_doris_test_config() -> ParamMap {
     params
 }
 
+pub fn create_doris_test_record(id: i64, table_count: i64, prefix: &str) -> DataRecord {
+    let mut record = DataRecord::default();
+    record.append(DataField::from_digit("wp_event_id", id));
+    record.append(DataField::from_chars(
+        "wp_src_key",
+        format!("{prefix}_{id}"),
+    ));
+    record.append(DataField::from_chars("sip", "192.168.1.100"));
+    record.append(DataField::from_chars("timestamp", "2024-03-02 10:00:00"));
+    record.append(DataField::from_chars(
+        "http/request",
+        format!("GET /api/{prefix}/{id} HTTP/1.1"),
+    ));
+    record.append(DataField::from_digit("status", 200));
+    record.append(DataField::from_digit("size", 1024 + id));
+    record.append(DataField::from_chars(
+        "referer",
+        dynamic_table_suffix(id, table_count),
+    ));
+    record.append(DataField::from_chars(
+        "http/agent",
+        "Mozilla/5.0 (Doris Test)",
+    ));
+    record
+}
+
+pub fn create_doris_test_records(
+    start_id: i64,
+    count: usize,
+    table_count: i64,
+    prefix: &str,
+) -> Vec<DataRecord> {
+    (0..count)
+        .map(|idx| create_doris_test_record(start_id + idx as i64, table_count, prefix))
+        .collect()
+}
+
 pub async fn query_table_count() -> Result<i64> {
     let pool = create_doris_pool(Some(TEST_DORIS_DB)).await?;
-    let count = sqlx::query(&format!(
-        "SELECT COUNT(*) FROM {}.{}",
-        TEST_DORIS_DB, TEST_DORIS_TABLE
-    ))
-    .fetch_one(&pool)
-    .await?
-    .try_get::<i64, _>(0)?;
+    let count = query_dynamic_table_count(&pool).await?;
     pool.close().await;
     Ok(count)
+}
+
+pub async fn query_dynamic_table_count(pool: &sqlx::MySqlPool) -> Result<i64> {
+    let table_rows = sqlx::query(&format!(
+        "SHOW TABLES FROM {} LIKE '{}_%'",
+        quote_identifier(TEST_DORIS_DB),
+        TEST_DORIS_TABLE
+    ))
+    .fetch_all(pool)
+    .await?;
+
+    let mut total = 0i64;
+    for row in table_rows {
+        let table_name: String = row.try_get(0)?;
+        let count = sqlx::query(&format!(
+            "SELECT COUNT(*) FROM {}.{}",
+            quote_identifier(TEST_DORIS_DB),
+            quote_identifier(&table_name)
+        ))
+        .fetch_one(pool)
+        .await?
+        .try_get::<i64, _>(0)?;
+        total += count;
+    }
+
+    Ok(total)
 }
 
 fn read_bool_column(row: &MySqlRow, column: &str) -> Option<bool> {
@@ -239,7 +315,19 @@ pub async fn wait_for_doris_sink_ready() -> Result<()> {
 }
 
 pub async fn init_doris_database() -> Result<()> {
+    init_doris_database_with_suffixes(dynamic_table_suffixes(INTEGRATION_DYNAMIC_TABLE_COUNT)).await
+}
+
+pub async fn init_doris_performance_database() -> Result<()> {
+    init_doris_database_with_suffixes(dynamic_table_suffixes(PERFORMANCE_DYNAMIC_TABLE_COUNT)).await
+}
+
+pub async fn init_doris_database_with_suffixes<I>(suffixes: I) -> Result<()>
+where
+    I: IntoIterator<Item = String>,
+{
     println!("初始化 Doris 数据库和表...");
+    let suffixes: Vec<String> = suffixes.into_iter().collect();
 
     let db = create_doris_admin_conn(None).await?;
 
@@ -247,37 +335,21 @@ pub async fn init_doris_database() -> Result<()> {
         .await?;
     println!("✓ 数据库创建成功");
 
-    db.execute_unprepared(&format!(
-        "DROP TABLE IF EXISTS {}.{}",
-        TEST_DORIS_DB, TEST_DORIS_TABLE
-    ))
-    .await?;
-    println!("✓ 旧表已删除");
-
-    let create_table_sql = format!(
-        r#"CREATE TABLE {}.{} (
-            wp_event_id BIGINT COMMENT '事件唯一ID',
-            wp_src_key STRING COMMENT '数据来源表示',
-            sip STRING COMMENT '客户端IP',
-            `timestamp` STRING COMMENT '原始时间字符串',
-            `http/request` STRING COMMENT 'HTTP请求行',
-            status SMALLINT COMMENT 'HTTP状态码',
-            size INT COMMENT '响应大小(byte)',
-            referer STRING COMMENT '来源页面',
-            `http/agent` STRING COMMENT 'User-Agent'
-        )
-        ENGINE=OLAP
-        DUPLICATE KEY(wp_event_id)
-        DISTRIBUTED BY HASH(wp_event_id) BUCKETS 8
-        PROPERTIES ("replication_num" = "1")"#,
-        TEST_DORIS_DB, TEST_DORIS_TABLE
-    );
+    for table_name in list_existing_dynamic_tables().await? {
+        db.execute_unprepared(&format!(
+            "DROP TABLE IF EXISTS {}.{}",
+            quote_identifier(TEST_DORIS_DB),
+            quote_identifier(&table_name)
+        ))
+        .await?;
+    }
+    println!("✓ 旧动态表已删除");
 
     let mut last_error = None;
     for attempt in 1..=10 {
-        match db.execute_unprepared(&create_table_sql).await {
-            Ok(_) => {
-                println!("✓ 表创建成功");
+        match create_dynamic_tables(&db, &suffixes).await {
+            Ok(()) => {
+                println!("✓ 动态表创建成功");
                 return Ok(());
             }
             Err(err) => {
@@ -298,4 +370,70 @@ pub async fn init_doris_database() -> Result<()> {
         "表创建失败，已重试多次: {}",
         last_error.unwrap_or_else(|| "未知错误".to_string())
     )
+}
+
+async fn create_dynamic_tables(
+    db: &sea_orm::DatabaseConnection,
+    suffixes: &[String],
+) -> Result<()> {
+    for suffix in suffixes {
+        db.execute_unprepared(&create_table_sql(&format!(
+            "{}_{}",
+            TEST_DORIS_TABLE, suffix
+        )))
+        .await?;
+    }
+    Ok(())
+}
+
+async fn list_existing_dynamic_tables() -> Result<Vec<String>> {
+    let pool = create_doris_pool(Some(TEST_DORIS_DB)).await?;
+    let rows = sqlx::query(&format!(
+        "SHOW TABLES FROM {} LIKE '{}_%'",
+        quote_identifier(TEST_DORIS_DB),
+        TEST_DORIS_TABLE
+    ))
+    .fetch_all(&pool)
+    .await?;
+
+    let mut tables = Vec::with_capacity(rows.len());
+    for row in rows {
+        tables.push(row.try_get::<String, _>(0)?);
+    }
+    pool.close().await;
+    Ok(tables)
+}
+
+fn dynamic_table_suffix(id: i64, table_count: i64) -> String {
+    let bucket = id.rem_euclid(table_count);
+    format!("bucket_{bucket:04}")
+}
+
+fn dynamic_table_suffixes(table_count: i64) -> impl Iterator<Item = String> {
+    (0..table_count).map(move |id| dynamic_table_suffix(id, table_count))
+}
+
+fn create_table_sql(table_name: &str) -> String {
+    format!(
+        r#"CREATE TABLE {}.{} (
+            wp_event_id BIGINT COMMENT '事件唯一ID',
+            wp_src_key STRING COMMENT '数据来源表示',
+            sip STRING COMMENT '客户端IP',
+            `timestamp` STRING COMMENT '原始时间字符串',
+            `http/request` STRING COMMENT 'HTTP请求行',
+            status SMALLINT COMMENT 'HTTP状态码',
+            size INT COMMENT '响应大小(byte)',
+            `http/agent` STRING COMMENT 'User-Agent'
+        )
+        ENGINE=OLAP
+        DUPLICATE KEY(wp_event_id)
+        DISTRIBUTED BY HASH(wp_event_id) BUCKETS 8
+        PROPERTIES ("replication_num" = "1")"#,
+        quote_identifier(TEST_DORIS_DB),
+        quote_identifier(table_name)
+    )
+}
+
+fn quote_identifier(identifier: &str) -> String {
+    format!("`{}`", identifier.replace('`', "``"))
 }
