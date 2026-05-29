@@ -36,7 +36,7 @@ async fn test_doris_sink_full_integration() -> RuntimeResult<()> {
         });
 
     let runtime = SinkIntegrationRuntime::new(docker_tool, vec![sink_info]);
-    runtime.run(true).await?;
+    runtime.run(false).await?;
 
     println!("\n✅ Doris 集成测试完成！");
     Ok(())

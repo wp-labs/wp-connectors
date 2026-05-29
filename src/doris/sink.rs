@@ -133,7 +133,7 @@ impl DorisSink {
     }
 
     fn write_record_json_line(&self, buffer: &mut Vec<u8>, record: &DataRecord) -> SinkResult<()> {
-        serde_json::to_writer(&mut *buffer, &JsonRecord(record, &self.template_fields))
+        serde_json::to_writer(&mut *buffer, &JsonRecord(record))
             .source_raw_err(SinkReason::Sink, "json serialization failed")?;
         buffer.push(b'\n');
         Ok(())
@@ -504,7 +504,7 @@ fn fingerprint_bytes(bytes: &[u8]) -> (u64, u64) {
     (hash_a, hash_b)
 }
 
-struct JsonRecord<'a>(&'a DataRecord, &'a [String]);
+struct JsonRecord<'a>(&'a DataRecord);
 
 impl Serialize for JsonRecord<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -515,17 +515,12 @@ impl Serialize for JsonRecord<'_> {
             .0
             .items
             .iter()
-            .filter(|field| {
-                *field.get_meta() != DataType::Ignore
-                    && !self.1.iter().any(|name| name == field.get_name())
-            })
+            .filter(|field| *field.get_meta() != DataType::Ignore)
             .count();
         let mut map = serializer.serialize_map(Some(field_count))?;
 
         for field in &self.0.items {
-            if *field.get_meta() == DataType::Ignore
-                || self.1.iter().any(|name| name == field.get_name())
-            {
+            if *field.get_meta() == DataType::Ignore {
                 continue;
             }
 
@@ -791,7 +786,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_record_json_line_removes_template_fields() {
+    async fn write_record_json_line_preserves_template_fields() {
         let sink = DorisSink::new(test_config_with_table("events_#{tenant}_#{day}"))
             .await
             .unwrap();
@@ -803,8 +798,8 @@ mod tests {
 
         assert_eq!(json["id"], serde_json::Value::Number(1.into()));
         assert_eq!(json["name"], serde_json::Value::String("alice".into()));
-        assert!(json.get("tenant").is_none());
-        assert!(json.get("day").is_none());
+        assert_eq!(json["tenant"], serde_json::Value::String("acme".into()));
+        assert_eq!(json["day"], serde_json::Value::String("20260527".into()));
     }
 
     #[tokio::test]
@@ -849,18 +844,18 @@ mod tests {
         assert_eq!(acme_payload.lines().count(), 2);
         assert!(acme_payload.contains("\"id\":1"));
         assert!(acme_payload.contains("\"id\":2"));
-        assert!(!acme_payload.contains("tenant"));
-        assert!(!acme_payload.contains("day"));
+        assert!(acme_payload.contains("\"tenant\":\"acme\""));
+        assert!(acme_payload.contains("\"day\":\"20260527\""));
 
         let beta_payload = String::from_utf8(batches[1].payload.clone()).unwrap();
         assert_eq!(beta_payload.lines().count(), 1);
         assert!(beta_payload.contains("\"id\":3"));
-        assert!(!beta_payload.contains("tenant"));
-        assert!(!beta_payload.contains("day"));
+        assert!(beta_payload.contains("\"tenant\":\"beta\""));
+        assert!(beta_payload.contains("\"day\":\"20260527\""));
     }
 
     #[tokio::test]
-    async fn dynamic_table_groups_records_and_removes_template_fields() {
+    async fn dynamic_table_groups_records_and_preserves_template_fields() {
         let server = MockServer::start_async().await;
         let mut sink = DorisSink::new(DorisSinkConfig::new(
             server.base_url(),
@@ -884,8 +879,8 @@ mod tests {
                     .body_includes("\"id\":1")
                     .body_includes("\"id\":2")
                     .body_includes("\"name\":\"alice\"")
-                    .body_not("tenant")
-                    .body_not("day");
+                    .body_includes("\"tenant\":\"acme\"")
+                    .body_includes("\"day\":\"20260527\"");
                 then.status(200).json_body_obj(&serde_json::json!({
                     "Status": "Success",
                     "NumberLoadedRows": 2,
@@ -901,8 +896,8 @@ mod tests {
                     .header("read_json_by_line", "true")
                     .body_includes("\"id\":3")
                     .body_includes("\"name\":\"alice\"")
-                    .body_not("tenant")
-                    .body_not("day");
+                    .body_includes("\"tenant\":\"beta\"")
+                    .body_includes("\"day\":\"20260527\"");
                 then.status(200).json_body_obj(&serde_json::json!({
                     "Status": "Success",
                     "NumberLoadedRows": 1,
