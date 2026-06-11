@@ -72,7 +72,16 @@ impl SinkFactory for DorisSinkFactory {
             headers,
         );
 
-        let sink = DorisSink::new(cfg).await?;
+        #[allow(unused_mut)]
+        let mut sink = DorisSink::new(cfg).await?;
+        {
+            use crate::utils::Protocol;
+            let protocol = match spec.params.get("protocol").and_then(|v| v.as_str()) {
+                Some("arrow") => Protocol::Arrow,
+                _ => Protocol::Text,
+            };
+            sink.set_protocol(protocol);
+        }
 
         Ok(SinkHandle::new(Box::new(sink)))
     }
@@ -271,4 +280,23 @@ mod tests {
         let factory = DorisSinkFactory;
         assert!(factory.validate_spec(&spec).is_err());
     }
+
+    #[test]
+    fn validate_accepts_protocol_arrow() {
+        let mut spec = base_spec();
+        spec.params
+            .insert("protocol".into(), Value::String("arrow".into()));
+        let factory = DorisSinkFactory;
+        assert!(factory.validate_spec(&spec).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_protocol_unknown_falls_back_to_text() {
+        let mut spec = base_spec();
+        spec.params
+            .insert("protocol".into(), Value::String("grpc".into()));
+        let factory = DorisSinkFactory;
+        assert!(factory.validate_spec(&spec).is_ok());
+    }
+
 }

@@ -5,14 +5,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkReason, SinkResult};
+use wp_connector_api::SinkErrorOwe;
 use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::{DataRecord, fmt_def::TextFmt};
 
 use crate::kafka::config::KafkaSinkConf;
+use crate::utils::Protocol;
 
 pub struct KafkaSink {
     pub(crate) inner: Arc<KWProducer>,
     pub(crate) fmt: TextFmt,
+    pub(crate) protocol: Protocol,
 }
 
 #[async_trait]
@@ -77,6 +80,16 @@ impl AsyncRecordSink for KafkaSink {
         Ok(())
     }
     async fn sink_records(&mut self, data: Vec<Arc<DataRecord>>) -> SinkResult<()> {
+        if self.protocol == Protocol::Arrow {
+            use crate::utils::arrow_fmt::records_to_arrow_ipc;
+            let ipc_bytes = records_to_arrow_ipc(&data).owe_sink("arrow ipc")?;
+            self.inner
+                .publish(&ipc_bytes, Default::default())
+                .await
+                .source_raw_err(SinkReason::Sink, "kafka send arrow fail")?;
+            return Ok(());
+        }
+        // Text path
         for item in data {
             self.sink_record(item.as_ref()).await?;
         }
@@ -85,6 +98,10 @@ impl AsyncRecordSink for KafkaSink {
 }
 
 impl KafkaSink {
+    pub fn set_protocol(&mut self, protocol: Protocol) {
+        self.protocol = protocol;
+    }
+
     pub async fn from_conf(conf: &KafkaSinkConf, fmt: TextFmt) -> SinkResult<Self> {
         let mut kc = KWProducerConf::new(&conf.brokers).set_topic_conf(
             &conf.topic,
@@ -110,6 +127,7 @@ impl KafkaSink {
         Ok(Self {
             inner: Arc::new(producer),
             fmt,
+            protocol: Protocol::default(),
         })
     }
 }

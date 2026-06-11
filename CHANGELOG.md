@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-06-12
+
+### Added
+
+- Kafka source 支持 Arrow `RecordBatch` 输出，对接 warp-fusion CEP 引擎
+- Kafka、ClickHouse、Doris sink 新增 `protocol` 参数，设置 `protocol: arrow` 可输出 Arrow IPC Stream 格式
+- 不支持的 sink 上设置 `protocol: arrow` 会返回明确的校验错误
+
 ## [0.14.1] - 2026-05-09
 
 ### Added

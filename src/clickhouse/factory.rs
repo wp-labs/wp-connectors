@@ -68,7 +68,16 @@ impl SinkFactory for ClickHouseSinkFactory {
             max_retries,
         );
 
-        let sink = ClickHouseSink::new(cfg).await?;
+        #[allow(unused_mut)]
+        let mut sink = ClickHouseSink::new(cfg).await?;
+        {
+            use crate::utils::Protocol;
+            let protocol = match spec.params.get("protocol").and_then(|v| v.as_str()) {
+                Some("arrow") => Protocol::Arrow,
+                _ => Protocol::Text,
+            };
+            sink.set_protocol(protocol);
+        }
 
         Ok(SinkHandle::new(Box::new(sink)))
     }
@@ -432,4 +441,33 @@ mod tests {
         assert_eq!(params.get("timeout_secs").and_then(Value::as_u64), Some(30));
         assert_eq!(params.get("max_retries").and_then(Value::as_i64), Some(3));
     }
+
+    #[test]
+    fn validate_accepts_protocol_arrow() {
+        let mut spec = base_spec();
+        spec.params
+            .insert("protocol".into(), Value::String("arrow".into()));
+        let factory = ClickHouseSinkFactory;
+        assert!(factory.validate_spec(&spec).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_protocol_text() {
+        let mut spec = base_spec();
+        spec.params
+            .insert("protocol".into(), Value::String("text".into()));
+        let factory = ClickHouseSinkFactory;
+        assert!(factory.validate_spec(&spec).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_protocol_unknown() {
+        // Unknown protocol should default to Text — shouldn't fail validation
+        let mut spec = base_spec();
+        spec.params
+            .insert("protocol".into(), Value::String("grpc".into()));
+        let factory = ClickHouseSinkFactory;
+        assert!(factory.validate_spec(&spec).is_ok());
+    }
+
 }

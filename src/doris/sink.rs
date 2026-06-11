@@ -15,6 +15,7 @@
 //! - Doris 可据此识别重复导入请求
 
 use crate::doris::config::DorisSinkConfig;
+use crate::utils::{arrow_fmt::records_to_arrow_ipc, Protocol};
 use crate::utils::time_stat_utils::TimeStatUtils;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -27,6 +28,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use wp_connector_api::SinkErrorOwe;
 use wp_connector_api::{
     AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkError, SinkReason, SinkResult,
 };
@@ -46,9 +48,9 @@ pub struct DorisSink {
     max_retries: i32,
     headers: HashMap<String, String>,
     instance_id: u64, // 实例唯一 ID
-    // 时间统计工具
     time_stats: TimeStatUtils,
     stopped: bool,
+    protocol: Protocol,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +115,7 @@ impl DorisSink {
             instance_id,
             time_stats: TimeStatUtils::new(),
             stopped: false,
+            protocol: Protocol::default(),
         })
     }
 
@@ -410,21 +413,69 @@ impl AsyncRecordSink for DorisSink {
             return Ok(());
         }
 
-        // 开始统计
         self.time_stats.start_stat(data.len() as u64);
+
+        if self.protocol == Protocol::Arrow {
+            let ipc_bytes = records_to_arrow_ipc(&data).owe_sink("arrow ipc")?;
+            self.arrow_stream_load(ipc_bytes).await?;
+            self.time_stats.end_stat();
+            self.time_stats.println(&format!("DorisSink-{}", self.instance_id));
+            return Ok(());
+        }
 
         for batch in self.records_to_table_batches(data)? {
             self.stream_load(batch).await?;
         }
 
-        // 结束统计
         self.time_stats.end_stat();
-
-        // 打印统计信息
-        self.time_stats
-            .println(&format!("DorisSink-{}", self.instance_id));
+        self.time_stats.println(&format!("DorisSink-{}", self.instance_id));
 
         Ok(())
+    }
+}
+
+impl DorisSink {
+    pub fn set_protocol(&mut self, protocol: Protocol) {
+        self.protocol = protocol;
+    }
+
+    async fn arrow_stream_load(&self, ipc_bytes: Vec<u8>) -> SinkResult<()> {
+        let url = format!("{}/api/{}/_stream_load", self.endpoint, self.database);
+        let resp = self
+            .client
+            .put(&url)
+            .basic_auth(&self.user, Some(&self.password))
+            .header("format", "arrow")
+            .body(ipc_bytes)
+            .send()
+            .await
+            .map_err(|e| sink_error(format!("arrow stream load: {e}")))?;
+
+        let status = resp.status();
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to read response body".to_string());
+
+        if status.is_success() {
+            // Doris returns 200 even for some logical errors; check Status field
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body)
+                && let Some(s) = parsed.get("Status").and_then(|v| v.as_str())
+            {
+                match s {
+                    "Success" | "Publish Timeout" => return Ok(()),
+                    _ => return Err(sink_error(format!(
+                        "arrow stream load failed: Status={s}, Message={}",
+                        parsed.get("Message").and_then(|v| v.as_str()).unwrap_or("")
+                    ))),
+                }
+            }
+            return Ok(());
+        }
+
+        Err(sink_error(format!(
+            "arrow stream load failed: HTTP {status}, body: {body}"
+        )))
     }
 }
 

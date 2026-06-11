@@ -218,6 +218,13 @@ fn parse_sink_fmt(value: Option<&Value>) -> SinkResult<TextFmt> {
     }
 }
 
+fn parse_protocol(value: Option<&Value>) -> crate::utils::Protocol {
+    match value.and_then(|v| v.as_str()).map(|s| s.trim()) {
+        Some("arrow") => crate::utils::Protocol::Arrow,
+        _ => crate::utils::Protocol::Text,
+    }
+}
+
 pub struct KafkaSourceFactory;
 
 #[async_trait]
@@ -266,7 +273,9 @@ impl SinkFactory for KafkaSinkFactory {
 
     async fn build(&self, spec: &SinkSpec, _ctx: &SinkBuildCtx) -> SinkResult<SinkHandle> {
         let (conf, fmt) = build_kafka_sink_conf_from_spec(spec)?;
-        let sink = KafkaSink::from_conf(&conf, fmt).await?;
+        let mut sink = KafkaSink::from_conf(&conf, fmt).await?;
+        let protocol = parse_protocol(spec.params.get("protocol"));
+        sink.set_protocol(protocol);
         Ok(SinkHandle::new(Box::new(sink)))
     }
 }
@@ -297,6 +306,7 @@ impl SinkDefProvider for KafkaSinkFactory {
                 "brokers",
                 "topic",
                 "fmt",
+                "protocol",
                 "num_partitions",
                 "replication",
                 "config",
@@ -327,6 +337,7 @@ fn kafka_sink_defaults() -> ParamMap {
     params.insert("brokers".into(), json!("localhost:9092"));
     params.insert("topic".into(), json!("wp_events"));
     params.insert("fmt".into(), json!("json"));
+    params.insert("protocol".into(), json!("text"));
     params.insert("num_partitions".into(), json!(1));
     params.insert("replication".into(), json!(1));
     params
@@ -481,4 +492,32 @@ mod tests {
         let (conf, _fmt) = build_kafka_sink_conf_from_spec(&spec).expect("valid sink spec");
         assert_eq!(conf.config, Some(vec!["acks=1".to_string()]));
     }
+
+    #[test]
+    fn parse_protocol_arrow() {
+        let val = json!("arrow");
+        let p = super::parse_protocol(Some(&val));
+        assert_eq!(p, crate::utils::Protocol::Arrow);
+    }
+
+    #[test]
+    fn parse_protocol_text() {
+        let val = json!("text");
+        let p = super::parse_protocol(Some(&val));
+        assert_eq!(p, crate::utils::Protocol::Text);
+    }
+
+    #[test]
+    fn parse_protocol_default_on_missing() {
+        let p = super::parse_protocol(None);
+        assert_eq!(p, crate::utils::Protocol::Text);
+    }
+
+    #[test]
+    fn parse_protocol_default_on_unknown() {
+        let val = json!("protobuf");
+        let p = super::parse_protocol(Some(&val));
+        assert_eq!(p, crate::utils::Protocol::Text);
+    }
+
 }

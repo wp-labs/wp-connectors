@@ -55,6 +55,7 @@ impl SinkFactory for CountSinkFactory {
     }
 
     fn validate_spec(&self, _spec: &SinkSpec) -> SinkResult<()> {
+        crate::utils::reject_arrow_protocol(_spec, self.kind())?;
         Ok(())
     }
 

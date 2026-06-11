@@ -1,11 +1,13 @@
 use super::config::ClickHouseSinkConfig;
 use crate::utils::fmt::{BatchFormat, fmt_strs};
 use crate::utils::time_stat_utils::TimeStatUtils;
+use crate::utils::{arrow_fmt::records_to_arrow_ipc, Protocol};
 use async_trait::async_trait;
 use clickhouse::Client;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use wp_connector_api::SinkErrorOwe;
 use wp_connector_api::{
     AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkError, SinkReason, SinkResult,
 };
@@ -13,6 +15,12 @@ use wp_model_core::model::DataRecord;
 
 // 全局原子计数器，用于生成唯一的实例 ID
 static INSTANCE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+static ARROW_HTTP_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+fn arrow_http_client() -> &'static reqwest::Client {
+    ARROW_HTTP_CLIENT.get_or_init(reqwest::Client::new)
+}
 
 /// ClickHouse Sink 实现，负责将数据记录批量写入 ClickHouse
 pub struct ClickHouseSink {
@@ -22,6 +30,10 @@ pub struct ClickHouseSink {
     max_retries: i32,          // 最大重试次数
     instance_id: u64,          // 实例唯一 ID
     time_stats: TimeStatUtils, // 性能统计工具
+    endpoint: String,          // Arrow 路径用
+    ch_user: String,           // Arrow 路径 Basic Auth
+    ch_password: String,       // Arrow 路径 Basic Auth
+    protocol: Protocol,
 }
 
 impl ClickHouseSink {
@@ -48,7 +60,15 @@ impl ClickHouseSink {
             max_retries: config.max_retries,
             instance_id,
             time_stats: TimeStatUtils::new(),
+            endpoint: config.endpoint.clone(),
+            ch_user: config.username.clone(),
+            ch_password: config.password.clone(),
+            protocol: Protocol::default(),
         })
+    }
+
+    pub fn set_protocol(&mut self, protocol: Protocol) {
+        self.protocol = protocol;
     }
 
     /// 将批量记录转换为 NDJSON 格式（每行一个 JSON 对象）
@@ -157,23 +177,42 @@ impl AsyncRecordSink for ClickHouseSink {
         if data.is_empty() {
             return Ok(());
         }
-        // 开始统计
         self.time_stats.start_stat(data.len() as u64);
 
-        // 转换为 NDJSON
+        if self.protocol == Protocol::Arrow {
+            let ipc_bytes = records_to_arrow_ipc(&data).owe_sink("arrow ipc")?;
+            let query = format!(
+                "INSERT INTO {}.{} FORMAT Arrow",
+                self.database, self.table
+            )
+            .replace(' ', "+");
+            let url = format!("{}/?query={}", self.endpoint, query);
+            let resp = arrow_http_client()
+                .post(&url)
+                .basic_auth(&self.ch_user, Some(&self.ch_password))
+                .body(ipc_bytes)
+                .send()
+                .await
+                .map_err(|e| sink_error(format!("arrow http: {e}")))?;
+            if !resp.status().is_success() {
+                return Err(sink_error(format!(
+                    "arrow insert failed: {} {}",
+                    resp.status(),
+                    resp.text().await.unwrap_or_default()
+                )));
+            }
+            self.time_stats.end_stat();
+            self.time_stats
+                .println(&format!("ClickHouseSink-{}", self.instance_id));
+            return Ok(());
+        }
+
         let ndjson = self.records_to_ndjson(&data)?;
         let row_count = data.len();
-
-        // 执行批量插入
         self.insert_batch(ndjson, row_count).await?;
-
-        // 结束统计
         self.time_stats.end_stat();
-
-        // 打印统计信息
         self.time_stats
             .println(&format!("ClickHouseSink-{}", self.instance_id));
-
         Ok(())
     }
 }

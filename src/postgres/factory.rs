@@ -53,6 +53,7 @@ impl SinkFactory for PostgresSinkFactory {
     }
 
     fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
+        crate::utils::reject_arrow_protocol(spec, self.kind())?;
         build_postgres_sink_conf(spec)?;
         Ok(())
     }

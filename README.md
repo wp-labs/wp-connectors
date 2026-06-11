@@ -67,6 +67,37 @@ cargo clippy --all-targets -- -D warnings
 | `clickhouse` | ClickHouse Sink (placeholder) | - |
 | `full` | Enable all features | - |
 
+## Arrow / warp-fusion Integration
+
+Sinks support a `protocol` parameter for output format selection. Set `protocol: arrow` to output [Arrow IPC Stream](https://arrow.apache.org/docs/format/Columnar.html#ipc-streaming-format) format instead of text.
+
+**Supported sinks:** `kafka`, `clickhouse`, `doris`
+
+```yaml
+# Example: Kafka sink with Arrow output
+brokers: localhost:9092
+topic: wp_events
+protocol: arrow    # Output Arrow IPC Stream bytes
+# fmt is ignored when protocol is arrow
+```
+
+### Kafka BatchSource
+
+The Kafka source implements `wf_connector_api::BatchSource`, producing Arrow `RecordBatch` for warp-fusion CEP engine consumption. Each batch contains up to 1024 messages with the following schema:
+
+| Column | Type | Nullable |
+|--------|------|:--------:|
+| `topic` | Utf8 | - |
+| `partition` | Int32 | - |
+| `offset` | Int64 | - |
+| `timestamp` | Int64 | ✅ |
+| `key` | Binary | ✅ |
+| `payload` | Binary | ✅ |
+
+### Validation
+
+Setting `protocol: arrow` on unsupported sinks (MySQL, Postgres, Elasticsearch, Prometheus, VictoriaMetrics, VictoriaLogs, Count, HTTP) produces a clear validation error listing supported sinks.
+
 ## Project Structure
 
 ```
@@ -191,6 +222,37 @@ cargo clippy --all-targets -- -D warnings
 | `elasticsearch` | Elasticsearch Sink（占位） | - |
 | `clickhouse` | ClickHouse Sink（占位） | - |
 | `full` | 启用全部特性 | - |
+
+## Arrow / warp-fusion 集成
+
+Sink 支持 `protocol` 参数选择输出格式。设置 `protocol: arrow` 可输出 [Arrow IPC Stream](https://arrow.apache.org/docs/format/Columnar.html#ipc-streaming-format) 二进制格式。
+
+**支持的 sink：**`kafka`、`clickhouse`、`doris`
+
+```yaml
+# 示例：Kafka sink 输出 Arrow 格式
+brokers: localhost:9092
+topic: wp_events
+protocol: arrow    # 输出 Arrow IPC Stream 二进制
+# fmt 在 protocol 为 arrow 时无效
+```
+
+### Kafka BatchSource
+
+Kafka source 实现了 `wf_connector_api::BatchSource`，为 warp-fusion CEP 引擎提供 Arrow `RecordBatch`。每批最多 1024 条消息，schema 如下：
+
+| 列 | 类型 | 可空 |
+|----|------|:----:|
+| `topic` | Utf8 | - |
+| `partition` | Int32 | - |
+| `offset` | Int64 | - |
+| `timestamp` | Int64 | ✅ |
+| `key` | Binary | ✅ |
+| `payload` | Binary | ✅ |
+
+### 参数校验
+
+在不支持的 sink（MySQL、Postgres、Elasticsearch、Prometheus、VictoriaMetrics、VictoriaLogs、Count、HTTP）上设置 `protocol: arrow` 会返回明确的校验错误，并列出支持的 sink。
 
 ## 项目结构
 

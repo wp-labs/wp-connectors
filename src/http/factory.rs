@@ -20,6 +20,7 @@ impl SinkFactory for HttpSinkFactory {
     }
 
     fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
+        crate::utils::reject_arrow_protocol(spec, self.kind())?;
         // Validate endpoint
         let endpoint = required_string(spec, "endpoint")?;
         validate_url_scheme(&endpoint)?;

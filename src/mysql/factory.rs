@@ -94,6 +94,7 @@ impl SinkFactory for MySQLSinkFactory {
         "mysql"
     }
     fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
+        crate::utils::reject_arrow_protocol(spec, self.kind())?;
         let endpoint = spec
             .params
             .get("endpoint")
