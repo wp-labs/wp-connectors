@@ -40,7 +40,7 @@ winnow = "1.0"
 educe = { version = "0.6", default-features = false, features = ["Debug", "Default"] }
 sea-orm = { version = "1.1", default-features = false, features = ["sqlx-mysql", "sqlx-postgres", "runtime-tokio-rustls"] }
 sqlx = { version = "0.8", default-features = false, features = ["mysql", "runtime-tokio", "tls-native-tls"]  }
-arrow = "54"
+arrow = "59"
 wf-connector-api = "0.1"
 
 # Optional Feature Dependencies
