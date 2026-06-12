@@ -3,7 +3,7 @@ resolver = "2"
 members = ["."]  # 当前包作为workspace成员
 
 [workspace.package]
-version = "0.15.0" # @gxl:set(version)
+version = "0.15.1" # @gxl:set(version)
 edition = "2024"
 description = "Stable connectors for warp-parse supporting source and sink functionality"
 authors = ["WP Labs Team"]
@@ -44,7 +44,7 @@ arrow = "54"
 wf-connector-api = "0.1"
 
 # Optional Feature Dependencies
-actix-web = "4.12"
+actix-web = { version = "4.12", default-features = false, features = ["macros"] }
 reqwest = { version = "0.13", features = ["json"] }
 clickhouse = "0.15.0"
 prometheus = "0.14"
