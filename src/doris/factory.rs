@@ -104,6 +104,7 @@ impl SinkDefProvider for DorisSinkFactory {
                 "max_retries",
                 "retries",
                 "headers",
+                "protocol",
             ]
             .into_iter()
             .map(str::to_string)

@@ -97,6 +97,7 @@ impl SinkDefProvider for ClickHouseSinkFactory {
                 "password",
                 "timeout_secs",
                 "max_retries",
+                "protocol",
             ]
             .into_iter()
             .map(str::to_string)
@@ -401,6 +402,7 @@ mod tests {
             "password",
             "timeout_secs",
             "max_retries",
+            "protocol",
         ];
         for param in expected_params {
             assert!(
