@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.3] - 2026-06-13
+
+### Changed
+
+- Arrow 输出 schema 类型化：Time 系列改为 `Timestamp(Nanosecond)`，数值/布尔列支持 Chars 自动转换
+
 ## [0.15.2] - 2026-06-13
 
 ### Fixed

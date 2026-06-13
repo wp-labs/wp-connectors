@@ -5,8 +5,11 @@
 
 use std::sync::Arc;
 
-use arrow::array::{ArrayRef, BooleanBuilder, Float64Builder, Int64Builder, StringBuilder};
-use arrow::datatypes::{DataType as ArrowType, Field, Schema};
+use arrow::array::{
+    ArrayRef, BooleanBuilder, Float64Builder, Int64Builder, StringBuilder,
+    TimestampNanosecondBuilder,
+};
+use arrow::datatypes::{DataType as ArrowType, Field, Schema, TimeUnit};
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
 use wp_model_core::model::DataRecord;
@@ -85,13 +88,13 @@ fn data_type_to_arrow(dt: &DataType) -> ArrowType {
         DataType::Bool => ArrowType::Boolean,
         DataType::Digit => ArrowType::Int64,
         DataType::Float => ArrowType::Float64,
-        // Time → Int64 (Unix millis)
+        // Time → Timestamp(Nanosecond)
         DataType::Time
         | DataType::TimeISO
         | DataType::TimeRFC3339
         | DataType::TimeRFC2822
         | DataType::TimeTIMESTAMP
-        | DataType::TimeCLF => ArrowType::Int64,
+        | DataType::TimeCLF => ArrowType::Timestamp(TimeUnit::Nanosecond, None),
         // Binary-ish → Binary
         DataType::Hex | DataType::Base64 => ArrowType::Binary,
         // String-ish → Utf8
@@ -156,6 +159,9 @@ fn build_column(
         ArrowType::Boolean => build_boolean_col(records, field, col_idx),
         ArrowType::Int64 => build_int64_col(records, field, col_idx),
         ArrowType::Float64 => build_float64_col(records, field, col_idx),
+        ArrowType::Timestamp(TimeUnit::Nanosecond, _) => {
+            build_timestamp_ns_col(records, field, col_idx)
+        }
         ArrowType::Binary => build_binary_col(records, field, col_idx),
         ArrowType::Utf8 => build_utf8_col(records, field, col_idx),
         other => Err(ArrowFmtError::Build(format!(
@@ -181,6 +187,7 @@ fn build_boolean_col(
     for rec in records {
         match field_value(rec, col_idx) {
             Some(Value::Bool(b)) => builder.append_value(*b),
+            Some(Value::Chars(s)) => builder.append_value(s.eq_ignore_ascii_case("true")),
             _ if field.is_nullable() => builder.append_null(),
             _ => builder.append_value(false),
         }
@@ -198,6 +205,13 @@ fn build_int64_col(
         match field_value(rec, col_idx) {
             Some(Value::Digit(d)) => builder.append_value(*d),
             Some(Value::Float(f)) => builder.append_value(*f as i64),
+            Some(Value::Chars(s)) => {
+                if let Ok(v) = s.parse::<i64>() {
+                    builder.append_value(v);
+                } else {
+                    builder.append_null();
+                }
+            }
             Some(Value::Time(dt)) => {
                 let millis = dt.and_utc().timestamp_millis();
                 builder.append_value(millis);
@@ -219,8 +233,56 @@ fn build_float64_col(
         match field_value(rec, col_idx) {
             Some(Value::Float(f)) => builder.append_value(*f),
             Some(Value::Digit(d)) => builder.append_value(*d as f64),
+            Some(Value::Chars(s)) => {
+                if let Ok(v) = s.parse::<f64>() {
+                    builder.append_value(v);
+                } else {
+                    builder.append_null();
+                }
+            }
             _ if field.is_nullable() => builder.append_null(),
             _ => builder.append_value(0.0),
+        }
+    }
+    Ok(Arc::new(builder.finish()))
+}
+
+fn build_timestamp_ns_col(
+    records: &[Arc<DataRecord>],
+    field: &Field,
+    col_idx: usize,
+) -> Result<ArrayRef, ArrowFmtError> {
+    let mut builder = TimestampNanosecondBuilder::new();
+    for rec in records {
+        match field_value(rec, col_idx) {
+            Some(Value::Time(dt)) => {
+                if let Some(ns) = dt.and_utc().timestamp_nanos_opt() {
+                    builder.append_value(ns);
+                } else {
+                    builder.append_null();
+                }
+            }
+            Some(Value::Digit(d)) => builder.append_value(*d * 1_000_000),
+            Some(Value::Chars(s)) => {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                    if let Some(ns) = dt.timestamp_nanos_opt() {
+                        builder.append_value(ns);
+                    } else {
+                        builder.append_null();
+                    }
+                } else if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                {
+                    if let Some(ns) = dt.and_utc().timestamp_nanos_opt() {
+                        builder.append_value(ns);
+                    } else {
+                        builder.append_null();
+                    }
+                } else {
+                    builder.append_null();
+                }
+            }
+            _ if field.is_nullable() => builder.append_null(),
+            _ => builder.append_null(),
         }
     }
     Ok(Arc::new(builder.finish()))
@@ -377,8 +439,11 @@ mod tests {
     }
 
     #[test]
-    fn time_maps_to_int64() {
-        assert_eq!(data_type_to_arrow(&DataType::Time), ArrowType::Int64);
+    fn time_maps_to_timestamp_ns() {
+        assert_eq!(
+            data_type_to_arrow(&DataType::Time),
+            ArrowType::Timestamp(TimeUnit::Nanosecond, None)
+        );
     }
 
     #[test]
@@ -548,5 +613,118 @@ mod tests {
     #[test]
     fn auto_type_falls_back_to_utf8() {
         assert_eq!(data_type_to_arrow(&DataType::Auto), ArrowType::Utf8);
+    }
+
+    #[test]
+    fn chars_fallback_in_int64_col() {
+        let recs = vec![make_record(vec![DataField::from_chars("val", "123")])];
+        let schema = Arc::new(Schema::new(vec![Field::new("val", ArrowType::Int64, true)]));
+        let batch = records_to_batch(&recs, &schema).unwrap();
+        let col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::Int64Array>()
+            .unwrap();
+        assert_eq!(col.value(0), 123);
+    }
+
+    #[test]
+    fn chars_fallback_in_float64_col() {
+        let recs = vec![make_record(vec![DataField::from_chars("val", "2.71")])];
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "val",
+            ArrowType::Float64,
+            true,
+        )]));
+        let batch = records_to_batch(&recs, &schema).unwrap();
+        let col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::Float64Array>()
+            .unwrap();
+        assert!((col.value(0) - 2.71).abs() < 0.001);
+    }
+
+    #[test]
+    fn chars_fallback_invalid_int64_is_null() {
+        let recs = vec![make_record(vec![DataField::from_chars("val", "abc")])];
+        let schema = Arc::new(Schema::new(vec![Field::new("val", ArrowType::Int64, true)]));
+        let batch = records_to_batch(&recs, &schema).unwrap();
+        let col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::Int64Array>()
+            .unwrap();
+        assert!(col.is_null(0));
+    }
+
+    #[test]
+    fn chars_fallback_in_bool_col() {
+        let recs = vec![make_record(vec![DataField::from_chars("flag", "TRUE")])];
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "flag",
+            ArrowType::Boolean,
+            true,
+        )]));
+        let batch = records_to_batch(&recs, &schema).unwrap();
+        let col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::BooleanArray>()
+            .unwrap();
+        assert!(col.value(0));
+    }
+
+    #[test]
+    fn chars_fallback_invalid_bool_is_false() {
+        let recs = vec![make_record(vec![DataField::from_chars("flag", "yes")])];
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "flag",
+            ArrowType::Boolean,
+            true,
+        )]));
+        let batch = records_to_batch(&recs, &schema).unwrap();
+        let col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::BooleanArray>()
+            .unwrap();
+        assert!(!col.value(0));
+    }
+
+    #[test]
+    fn chars_fallback_invalid_float64_is_null() {
+        let recs = vec![make_record(vec![DataField::from_chars("val", "abc")])];
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "val",
+            ArrowType::Float64,
+            true,
+        )]));
+        let batch = records_to_batch(&recs, &schema).unwrap();
+        let col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::Float64Array>()
+            .unwrap();
+        assert!(col.is_null(0));
+    }
+
+    #[test]
+    fn timestamp_ns_from_time_value() {
+        use chrono::NaiveDateTime;
+        let dt = NaiveDateTime::parse_from_str("2026-06-13 12:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+        let recs = vec![make_record(vec![DataField::from_time("ts", dt)])];
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "ts",
+            ArrowType::Timestamp(TimeUnit::Nanosecond, None),
+            true,
+        )]));
+        let batch = records_to_batch(&recs, &schema).unwrap();
+        let col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::TimestampNanosecondArray>()
+            .unwrap();
+        assert!(col.value(0) > 0);
     }
 }
