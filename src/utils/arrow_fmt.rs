@@ -5,9 +5,7 @@
 
 use std::sync::Arc;
 
-use arrow::array::{
-    ArrayRef, BooleanBuilder, Float64Builder, Int64Builder, StringBuilder,
-};
+use arrow::array::{ArrayRef, BooleanBuilder, Float64Builder, Int64Builder, StringBuilder};
 use arrow::datatypes::{DataType as ArrowType, Field, Schema};
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
@@ -324,7 +322,10 @@ mod tests {
     fn empty_records_returns_valid_ipc() {
         let records: Vec<Arc<DataRecord>> = vec![];
         let ipc = records_to_arrow_ipc(&records).expect("empty ipc");
-        assert!(!ipc.is_empty(), "even empty schema should produce IPC bytes");
+        assert!(
+            !ipc.is_empty(),
+            "even empty schema should produce IPC bytes"
+        );
 
         // Should be readable as a stream with schema-only
         let cursor = std::io::Cursor::new(&ipc);
@@ -338,14 +339,8 @@ mod tests {
     #[test]
     fn schema_inferred_from_first_record() {
         let recs = vec![
-            make_record(vec![
-                char_field("name", "alice"),
-                digit_field("age", 30),
-            ]),
-            make_record(vec![
-                char_field("name", "bob"),
-                digit_field("age", 25),
-            ]),
+            make_record(vec![char_field("name", "alice"), digit_field("age", 30)]),
+            make_record(vec![char_field("name", "bob"), digit_field("age", 25)]),
         ];
         let ipc = records_to_arrow_ipc(&recs).expect("ipc");
         let cursor = std::io::Cursor::new(&ipc);
@@ -434,7 +429,10 @@ mod tests {
         ];
         for v in &variants {
             let arrow_type = data_type_to_arrow(v);
-            assert!(!format!("{arrow_type:?}").is_empty(), "{v:?} maps to nothing");
+            assert!(
+                !format!("{arrow_type:?}").is_empty(),
+                "{v:?} maps to nothing"
+            );
         }
     }
 
@@ -443,14 +441,8 @@ mod tests {
     #[test]
     fn round_trip_string_and_digit() {
         let recs = vec![
-            make_record(vec![
-                char_field("name", "alice"),
-                digit_field("age", 30),
-            ]),
-            make_record(vec![
-                char_field("name", "bob"),
-                digit_field("age", 25),
-            ]),
+            make_record(vec![char_field("name", "alice"), digit_field("age", 30)]),
+            make_record(vec![char_field("name", "bob"), digit_field("age", 25)]),
         ];
         let ipc = records_to_arrow_ipc(&recs).expect("ipc");
         let cursor = std::io::Cursor::new(&ipc);
@@ -482,9 +474,7 @@ mod tests {
 
     #[test]
     fn round_trip_single_record() {
-        let recs = vec![make_record(vec![
-            digit_field("count", 42),
-        ])];
+        let recs = vec![make_record(vec![digit_field("count", 42)])];
         let ipc = records_to_arrow_ipc(&recs).expect("ipc");
         let cursor = std::io::Cursor::new(&ipc);
         let mut reader = StreamReader::try_new(cursor, None).expect("read ipc");

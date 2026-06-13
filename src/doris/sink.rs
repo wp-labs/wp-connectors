@@ -15,8 +15,8 @@
 //! - Doris 可据此识别重复导入请求
 
 use crate::doris::config::DorisSinkConfig;
-use crate::utils::{arrow_fmt::records_to_arrow_ipc, Protocol};
 use crate::utils::time_stat_utils::TimeStatUtils;
+use crate::utils::{Protocol, arrow_fmt::records_to_arrow_ipc};
 use async_trait::async_trait;
 use bytes::Bytes;
 use orion_error::prelude::SourceRawErr;
@@ -419,7 +419,8 @@ impl AsyncRecordSink for DorisSink {
             let ipc_bytes = records_to_arrow_ipc(&data).owe_sink("arrow ipc")?;
             self.arrow_stream_load(ipc_bytes).await?;
             self.time_stats.end_stat();
-            self.time_stats.println(&format!("DorisSink-{}", self.instance_id));
+            self.time_stats
+                .println(&format!("DorisSink-{}", self.instance_id));
             return Ok(());
         }
 
@@ -428,7 +429,8 @@ impl AsyncRecordSink for DorisSink {
         }
 
         self.time_stats.end_stat();
-        self.time_stats.println(&format!("DorisSink-{}", self.instance_id));
+        self.time_stats
+            .println(&format!("DorisSink-{}", self.instance_id));
 
         Ok(())
     }
@@ -464,10 +466,12 @@ impl DorisSink {
             {
                 match s {
                     "Success" | "Publish Timeout" => return Ok(()),
-                    _ => return Err(sink_error(format!(
-                        "arrow stream load failed: Status={s}, Message={}",
-                        parsed.get("Message").and_then(|v| v.as_str()).unwrap_or("")
-                    ))),
+                    _ => {
+                        return Err(sink_error(format!(
+                            "arrow stream load failed: Status={s}, Message={}",
+                            parsed.get("Message").and_then(|v| v.as_str()).unwrap_or("")
+                        )));
+                    }
                 }
             }
             return Ok(());

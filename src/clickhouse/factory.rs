@@ -471,5 +471,4 @@ mod tests {
         let factory = ClickHouseSinkFactory;
         assert!(factory.validate_spec(&spec).is_ok());
     }
-
 }

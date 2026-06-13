@@ -299,5 +299,4 @@ mod tests {
         let factory = DorisSinkFactory;
         assert!(factory.validate_spec(&spec).is_ok());
     }
-
 }

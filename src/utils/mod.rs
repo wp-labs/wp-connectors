@@ -18,9 +18,17 @@ const ARROW_SUPPORTED_SINKS: &[&str] = &["kafka", "clickhouse", "doris"];
 ///
 /// Always available regardless of the `wf` feature — the check is a simple
 /// string comparison. Call this in every unsupported sink's `validate_spec`.
-pub fn reject_arrow_protocol(spec: &wp_connector_api::SinkSpec, sink_kind: &str) -> wp_connector_api::SinkResult<()> {
+pub fn reject_arrow_protocol(
+    spec: &wp_connector_api::SinkSpec,
+    sink_kind: &str,
+) -> wp_connector_api::SinkResult<()> {
     use wp_connector_api::SinkReason;
-    if let Some("arrow") = spec.params.get("protocol").and_then(|v| v.as_str()).map(|s| s.trim()) {
+    if let Some("arrow") = spec
+        .params
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+    {
         return Err(SinkReason::sink(format!(
             "protocol 'arrow' is not supported by the '{sink_kind}' sink. \
              Arrow output is currently supported on: {}",
@@ -32,7 +40,7 @@ pub fn reject_arrow_protocol(spec: &wp_connector_api::SinkSpec, sink_kind: &str)
 
 #[cfg(test)]
 mod protocol_tests {
-    use super::{reject_arrow_protocol, ARROW_SUPPORTED_SINKS};
+    use super::{ARROW_SUPPORTED_SINKS, reject_arrow_protocol};
     use std::collections::BTreeMap;
     use wp_connector_api::SinkSpec;
 

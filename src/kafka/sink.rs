@@ -4,8 +4,8 @@ use rdkafka_wrap::{KWProducer, KWProducerConf, OptionExt};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkReason, SinkResult};
 use wp_connector_api::SinkErrorOwe;
+use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkReason, SinkResult};
 use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::{DataRecord, fmt_def::TextFmt};
 

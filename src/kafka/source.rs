@@ -162,17 +162,15 @@ mod wf_impl {
     use std::sync::{Arc, OnceLock};
 
     use async_trait::async_trait;
+    use rdkafka_wrap::Message;
     use rdkafka_wrap::error::KafkaError;
     use rdkafka_wrap::types::RDKafkaErrorCode;
-    use rdkafka_wrap::Message;
 
-    use arrow::array::{BinaryBuilder, Int32Builder, Int64Builder, StringBuilder};
     use arrow::array::ArrayBuilder;
+    use arrow::array::{BinaryBuilder, Int32Builder, Int64Builder, StringBuilder};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
-    use wf_connector_api::{
-        BatchSource, SourceReason as WfReason, SourceResult as WfResult,
-    };
+    use wf_connector_api::{BatchSource, SourceReason as WfReason, SourceResult as WfResult};
 
     use super::KafkaSource;
 
@@ -242,8 +240,7 @@ mod wf_impl {
                         if topic_builder.len() > 0 {
                             break; // return partial batch; EOF will surface next call
                         }
-                        return Err(WfReason::EOF
-                            .err_detail(format!("partition {partition} EOF")));
+                        return Err(WfReason::EOF.err_detail(format!("partition {partition} EOF")));
                     }
                     // Consumption error with specific code
                     Err(KafkaError::MessageConsumption(code)) => {
@@ -258,16 +255,14 @@ mod wf_impl {
                         if topic_builder.len() > 0 {
                             break;
                         }
-                        return Err(WfReason::Io
-                            .err_detail(format!("kafka recv error: {code}")));
+                        return Err(WfReason::Io.err_detail(format!("kafka recv error: {code}")));
                     }
                     // All other Kafka errors → Io
                     Err(e) => {
                         if topic_builder.len() > 0 {
                             break; // return partial batch; error will surface next call
                         }
-                        return Err(WfReason::Io
-                            .err_detail(format!("kafka recv error: {e}")));
+                        return Err(WfReason::Io.err_detail(format!("kafka recv error: {e}")));
                     }
                 }
             }
@@ -287,9 +282,7 @@ mod wf_impl {
                     Arc::new(payload_builder.finish()),
                 ],
             )
-            .map_err(|e| {
-                WfReason::Decode.err_detail(format!("RecordBatch build failed: {e}"))
-            })?;
+            .map_err(|e| WfReason::Decode.err_detail(format!("RecordBatch build failed: {e}")))?;
 
             Ok(vec![batch])
         }
@@ -332,14 +325,17 @@ mod wf_impl {
         #[test]
         fn schema_field_names() {
             let schema = kafka_batch_schema();
-            let names: Vec<&str> = schema
-                .fields()
-                .iter()
-                .map(|f| f.name().as_str())
-                .collect();
+            let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
             assert_eq!(
                 names,
-                vec!["topic", "partition", "offset", "timestamp", "key", "payload"]
+                vec![
+                    "topic",
+                    "partition",
+                    "offset",
+                    "timestamp",
+                    "key",
+                    "payload"
+                ]
             );
         }
 

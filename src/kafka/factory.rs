@@ -519,5 +519,4 @@ mod tests {
         let p = super::parse_protocol(Some(&val));
         assert_eq!(p, crate::utils::Protocol::Text);
     }
-
 }

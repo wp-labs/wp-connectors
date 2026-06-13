@@ -1,7 +1,7 @@
 use super::config::ClickHouseSinkConfig;
 use crate::utils::fmt::{BatchFormat, fmt_strs};
 use crate::utils::time_stat_utils::TimeStatUtils;
-use crate::utils::{arrow_fmt::records_to_arrow_ipc, Protocol};
+use crate::utils::{Protocol, arrow_fmt::records_to_arrow_ipc};
 use async_trait::async_trait;
 use clickhouse::Client;
 use std::sync::Arc;
@@ -181,11 +181,8 @@ impl AsyncRecordSink for ClickHouseSink {
 
         if self.protocol == Protocol::Arrow {
             let ipc_bytes = records_to_arrow_ipc(&data).owe_sink("arrow ipc")?;
-            let query = format!(
-                "INSERT INTO {}.{} FORMAT Arrow",
-                self.database, self.table
-            )
-            .replace(' ', "+");
+            let query = format!("INSERT INTO {}.{} FORMAT Arrow", self.database, self.table)
+                .replace(' ', "+");
             let url = format!("{}/?query={}", self.endpoint, query);
             let resp = arrow_http_client()
                 .post(&url)
