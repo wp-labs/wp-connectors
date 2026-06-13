@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.4] - 2026-06-13
+
+### Changed
+
+- 与 wp-core-connectors 对齐：Port→Int32、Ignore 过滤、Obj/Array→JSON、Hex→原始字节
+- `arrow_fmt` 新增 Int32 列 builder、`format_utf8_value`、`to_raw_bytes`
+
 ## [0.15.3] - 2026-06-13
 
 ### Changed

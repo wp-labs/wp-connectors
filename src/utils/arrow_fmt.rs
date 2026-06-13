@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use arrow::array::{
-    ArrayRef, BooleanBuilder, Float64Builder, Int64Builder, StringBuilder,
+    ArrayRef, BooleanBuilder, Float64Builder, Int32Builder, Int64Builder, StringBuilder,
     TimestampNanosecondBuilder,
 };
 use arrow::datatypes::{DataType as ArrowType, Field, Schema, TimeUnit};
@@ -72,11 +72,11 @@ fn infer_schema(records: &[Arc<DataRecord>]) -> Result<Arc<Schema>, ArrowFmtErro
     let fields: Vec<Field> = first
         .items
         .iter()
+        .filter(|f| !matches!(f.get_meta(), DataType::Ignore))
         .map(|f| {
             let name = f.get_name().to_string();
             let arrow_type = data_type_to_arrow(f.get_meta());
-            let nullable = matches!(f.get_meta(), DataType::Ignore);
-            Field::new(name, arrow_type, nullable)
+            Field::new(name, arrow_type, true)
         })
         .collect();
     Ok(Arc::new(Schema::new(fields)))
@@ -95,6 +95,7 @@ fn data_type_to_arrow(dt: &DataType) -> ArrowType {
         | DataType::TimeRFC2822
         | DataType::TimeTIMESTAMP
         | DataType::TimeCLF => ArrowType::Timestamp(TimeUnit::Nanosecond, None),
+        DataType::Port => ArrowType::Int32,
         // Binary-ish → Binary
         DataType::Hex | DataType::Base64 => ArrowType::Binary,
         // String-ish → Utf8
@@ -105,7 +106,6 @@ fn data_type_to_arrow(dt: &DataType) -> ArrowType {
         | DataType::IpNet
         | DataType::Domain
         | DataType::Email
-        | DataType::Port
         | DataType::SN
         | DataType::Url
         | DataType::MobilePhone
@@ -119,7 +119,6 @@ fn data_type_to_arrow(dt: &DataType) -> ArrowType {
         | DataType::ExactJson
         | DataType::ProtoText
         | DataType::Auto => ArrowType::Utf8,
-        // Ignore → Utf8 (nullable; caller should filter)
         DataType::Ignore => ArrowType::Utf8,
         // Nested types → Utf8 (JSON representation)
         DataType::Obj | DataType::Array(_) | DataType::KvArr => ArrowType::Utf8,
@@ -157,6 +156,7 @@ fn build_column(
 ) -> Result<ArrayRef, ArrowFmtError> {
     match field.data_type() {
         ArrowType::Boolean => build_boolean_col(records, field, col_idx),
+        ArrowType::Int32 => build_int32_col(records, field, col_idx),
         ArrowType::Int64 => build_int64_col(records, field, col_idx),
         ArrowType::Float64 => build_float64_col(records, field, col_idx),
         ArrowType::Timestamp(TimeUnit::Nanosecond, _) => {
@@ -190,6 +190,30 @@ fn build_boolean_col(
             Some(Value::Chars(s)) => builder.append_value(s.eq_ignore_ascii_case("true")),
             _ if field.is_nullable() => builder.append_null(),
             _ => builder.append_value(false),
+        }
+    }
+    Ok(Arc::new(builder.finish()))
+}
+
+fn build_int32_col(
+    records: &[Arc<DataRecord>],
+    field: &Field,
+    col_idx: usize,
+) -> Result<ArrayRef, ArrowFmtError> {
+    let mut builder = Int32Builder::new();
+    for rec in records {
+        match field_value(rec, col_idx) {
+            Some(Value::Digit(d)) => builder.append_value(*d as i32),
+            Some(Value::Float(f)) => builder.append_value(*f as i32),
+            Some(Value::Chars(s)) => {
+                if let Ok(v) = s.parse::<i32>() {
+                    builder.append_value(v);
+                } else {
+                    builder.append_null();
+                }
+            }
+            _ if field.is_nullable() => builder.append_null(),
+            _ => builder.append_value(0),
         }
     }
     Ok(Arc::new(builder.finish()))
@@ -298,8 +322,8 @@ fn build_binary_col(
     for rec in records {
         match field_value(rec, col_idx) {
             Some(v) => {
-                let s = format_value(v);
-                builder.append_value(s.as_bytes());
+                let bytes = to_raw_bytes(v);
+                builder.append_value(&bytes[..]);
             }
             _ if field.is_nullable() => builder.append_null(),
             _ => builder.append_value(b""),
@@ -316,7 +340,7 @@ fn build_utf8_col(
     let mut builder = StringBuilder::new();
     for rec in records {
         match field_value(rec, col_idx) {
-            Some(v) => builder.append_value(format_value(v)),
+            Some(v) => builder.append_value(format_utf8_value(v)),
             _ if field.is_nullable() => builder.append_null(),
             _ => builder.append_value(""),
         }
@@ -324,28 +348,28 @@ fn build_utf8_col(
     Ok(Arc::new(builder.finish()))
 }
 
-// -- Value formatting (fallback) --------------------------------------------
+// -- Value formatting --------------------------------------------------------
 
-fn format_value(v: &Value) -> String {
+fn format_utf8_value(v: &Value) -> String {
     match v {
-        Value::Null => String::new(),
-        Value::Bool(b) => b.to_string(),
-        Value::Chars(s) => s.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Digit(d) => d.to_string(),
-        Value::Time(dt) => dt.and_utc().timestamp_millis().to_string(),
-        Value::Symbol(s) => s.to_string(),
-        Value::Obj(o) => format!("{o:?}"),
-        Value::Array(_) => String::from("[array]"),
-        Value::IpAddr(ip) => ip.to_string(),
-        Value::IpNet(net) => net.to_string(),
-        Value::Domain(d) => d.to_string(),
-        Value::Url(u) => u.to_string(),
-        Value::Email(e) => e.to_string(),
-        Value::IdCard(id) => id.to_string(),
-        Value::MobilePhone(m) => m.to_string(),
-        Value::Hex(h) => h.to_string(),
-        Value::Ignore(_) => String::new(),
+        Value::Obj(_) | Value::Array(_) => {
+            serde_json::to_string(v).unwrap_or_else(|_| format!("{v:?}"))
+        }
+        _ => v.to_string(),
+    }
+}
+
+fn to_raw_bytes(v: &Value) -> Vec<u8> {
+    match v {
+        Value::Hex(h) => {
+            if h.0 == 0 {
+                return vec![0];
+            }
+            let be = h.0.to_be_bytes();
+            let start = be.iter().position(|&b| b != 0).unwrap();
+            be[start..].to_vec()
+        }
+        _ => format_utf8_value(v).into_bytes(),
     }
 }
 
@@ -726,5 +750,84 @@ mod tests {
             .downcast_ref::<arrow::array::TimestampNanosecondArray>()
             .unwrap();
         assert!(col.value(0) > 0);
+    }
+
+    // -- Port → Int32 ----------------------------------------------------------
+
+    #[test]
+    fn port_maps_to_int32() {
+        assert_eq!(data_type_to_arrow(&DataType::Port), ArrowType::Int32);
+    }
+
+    #[test]
+    fn int32_col_from_digit() {
+        let recs = vec![make_record(vec![DataField::from_digit("port", 8080)])];
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "port",
+            ArrowType::Int32,
+            true,
+        )]));
+        let batch = records_to_batch(&recs, &schema).unwrap();
+        let col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::Int32Array>()
+            .unwrap();
+        assert_eq!(col.value(0), 8080);
+    }
+
+    #[test]
+    fn int32_col_chars_fallback() {
+        let recs = vec![make_record(vec![DataField::from_chars("port", "443")])];
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "port",
+            ArrowType::Int32,
+            true,
+        )]));
+        let batch = records_to_batch(&recs, &schema).unwrap();
+        let col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::Int32Array>()
+            .unwrap();
+        assert_eq!(col.value(0), 443);
+    }
+
+    // -- Ignore filtered from schema -------------------------------------------
+
+    #[test]
+    fn ignore_not_in_schema() {
+        let recs = vec![make_record(vec![DataField::from_digit("count", 1)])];
+        let schema = infer_schema(&recs).unwrap();
+        assert_eq!(schema.fields().len(), 1);
+        assert!(schema.fields().iter().any(|f| f.name() == "count"));
+    }
+
+    // -- Hex → raw bytes -------------------------------------------------------
+
+    #[test]
+    fn hex_to_raw_bytes_minimal() {
+        use wp_model_core::model::types::value::HexT;
+        let v = Value::Hex(HexT(0x1A2B));
+        let bytes = to_raw_bytes(&v);
+        assert_eq!(bytes, vec![0x1A, 0x2B]);
+    }
+
+    #[test]
+    fn hex_zero_to_raw_bytes() {
+        use wp_model_core::model::types::value::HexT;
+        let v = Value::Hex(HexT(0));
+        let bytes = to_raw_bytes(&v);
+        assert_eq!(bytes, vec![0]);
+    }
+
+    // -- Obj/Array → JSON ------------------------------------------------------
+
+    #[test]
+    fn obj_formatted_as_json() {
+        use wp_model_core::model::types::value::ObjectValue;
+        let v = Value::Obj(ObjectValue::default());
+        let s = format_utf8_value(&v);
+        assert!(s.starts_with('{') || s == "{}", "expected JSON, got: {s}");
     }
 }
