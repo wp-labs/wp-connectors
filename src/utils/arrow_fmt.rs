@@ -42,6 +42,25 @@ pub fn records_to_arrow_ipc(records: &[Arc<DataRecord>]) -> Result<Vec<u8>, Arro
     Ok(buf)
 }
 
+/// Serialize a batch of [`DataRecord`]s into a wp_arrow IPC frame:
+/// `[4B tag_len (big-endian)][tag][Arrow IPC Stream]`.
+///
+/// Wraps [`records_to_arrow_ipc`] with the wp_arrow frame header so a peer
+/// using `data_format = "arrow_framed"` (via [`crate::utils::arrow_decode::decode_arrow_framed_batches`])
+/// can recover the IPC stream and the stream `tag`.
+pub fn records_to_arrow_ipc_frame(
+    tag: &str,
+    records: &[Arc<DataRecord>],
+) -> Result<Vec<u8>, ArrowFmtError> {
+    let ipc = records_to_arrow_ipc(records)?;
+    let tag_bytes = tag.as_bytes();
+    let mut buf = Vec::with_capacity(4 + tag_bytes.len() + ipc.len());
+    buf.extend_from_slice(&(tag_bytes.len() as u32).to_be_bytes());
+    buf.extend_from_slice(tag_bytes);
+    buf.extend_from_slice(&ipc);
+    Ok(buf)
+}
+
 #[derive(Debug)]
 pub enum ArrowFmtError {
     IpcWrite(String),

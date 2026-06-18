@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.6] - 2026-06-18
+
+### Added
+
+- `utils::arrow_fmt::records_to_arrow_ipc_frame`：编码 `DataRecord` → wp_arrow frame `[tag_len][tag][IPC]`，与 source 侧 `decode_arrow_framed_batches` 对称
+- KafkaSink 支持 `data_format` 参数（`arrow_ipc` / `arrow_framed`）：`sink_records` 按格式分派编码；`sink_record` Arrow 路径委托 `sink_records`，单条记录也走 Arrow 编码
+- `KafkaSink::set_data_format` 方法与 `data_format`/`tag` 字段
+
+### Changed
+
+- `KafkaSinkFactory::build` 解析 `data_format`/`tag` 传入 sink；`data_format` 默认值根据 `protocol` 调整：Arrow → `ArrowStream`，Text → `Ndjson`
+- `data_format` 校验仅在 `protocol == Arrow` 时生效，text 协议忽略
+- KafkaSink builtin def 增加 `data_format`（默认 `arrow_ipc`）和 `tag` 到 `allow_override`
+
 ## [0.15.5] - 2026-06-18
 
 ### Added
@@ -220,7 +234,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.15.6...HEAD
+[0.15.6]: https://github.com/wp-labs/wp-connectors/compare/v0.15.5...v0.15.6
+[0.15.5]: https://github.com/wp-labs/wp-connectors/compare/v0.15.4...v0.15.5
+[0.15.4]: https://github.com/wp-labs/wp-connectors/compare/v0.15.3...v0.15.4
+[0.15.3]: https://github.com/wp-labs/wp-connectors/compare/v0.14.1...v0.15.3
 [0.14.1]: https://github.com/wp-labs/wp-connectors/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/wp-labs/wp-connectors/compare/v0.12.0...v0.14.0
 [0.12.0]: https://github.com/wp-labs/wp-connectors/compare/v0.10.0...v0.12.0

@@ -14,6 +14,7 @@ use crate::kafka::{
     KafkaSink, KafkaSource,
     config::{KafkaSinkConf, KafkaSourceConf},
 };
+use crate::utils::Protocol;
 use crate::utils::arrow_decode::WireFormat;
 
 fn build_kafka_conf_from_spec(
@@ -47,6 +48,15 @@ fn build_kafka_sink_conf_from_spec(spec: &SinkSpec) -> SinkResult<(KafkaSinkConf
     let replication = parse_positive_i32(spec.params.get("replication"), "kafka.replication")?;
     let config = parse_sink_config(spec.params.get("config"))?;
     let fmt = parse_sink_fmt(spec.params.get("fmt"))?;
+    let protocol = parse_protocol(spec.params.get("protocol"));
+
+    // Validate data_format (only matters for protocol: arrow)
+    if protocol == Protocol::Arrow
+        && let Some(df) = spec.params.get("data_format").and_then(|v| v.as_str())
+        && let Err(e) = WireFormat::parse_strict(Some(df))
+    {
+        return Err(SinkReason::core_conf().err().with_detail(e));
+    }
 
     let conf = KafkaSinkConf {
         brokers,
@@ -281,6 +291,23 @@ impl SinkFactory for KafkaSinkFactory {
         let mut sink = KafkaSink::from_conf(&conf, fmt).await?;
         let protocol = parse_protocol(spec.params.get("protocol"));
         sink.set_protocol(protocol);
+        // Parse data_format (only meaningful for protocol: arrow)
+        let data_format = spec
+            .params
+            .get("data_format")
+            .and_then(|v| v.as_str())
+            .map(|s| WireFormat::from_data_format(Some(s)))
+            .unwrap_or(if protocol == Protocol::Arrow {
+                WireFormat::ArrowStream
+            } else {
+                WireFormat::default()
+            });
+        let tag = spec
+            .params
+            .get("tag")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        sink.set_data_format(data_format, tag);
         Ok(SinkHandle::new(Box::new(sink)))
     }
 }
@@ -315,6 +342,8 @@ impl SinkDefProvider for KafkaSinkFactory {
                 "num_partitions",
                 "replication",
                 "config",
+                "data_format",
+                "tag",
             ]
             .into_iter()
             .map(str::to_string)
@@ -346,6 +375,7 @@ fn kafka_sink_defaults() -> ParamMap {
     params.insert("protocol".into(), json!("text"));
     params.insert("num_partitions".into(), json!(1));
     params.insert("replication".into(), json!(1));
+    params.insert("data_format".into(), json!("arrow_ipc"));
     params
 }
 
@@ -569,6 +599,86 @@ mod tests {
         assert_eq!(
             def.default_params.get("data_format"),
             Some(&json!("ndjson"))
+        );
+    }
+
+    // -- Sink data_format validation ------------------------------------
+
+    fn sink_spec_with_data_format(
+        data_format: Option<&str>,
+        protocol: Option<&str>,
+    ) -> wp_connector_api::SinkSpec {
+        let mut params = BTreeMap::new();
+        params.insert("brokers".into(), json!("localhost:9092"));
+        params.insert("topic".into(), json!("topic_a"));
+        if let Some(v) = data_format {
+            params.insert("data_format".into(), json!(v));
+        }
+        if let Some(v) = protocol {
+            params.insert("protocol".into(), json!(v));
+        }
+        SinkSpec {
+            name: "test".into(),
+            kind: "kafka".into(),
+            connector_id: String::new(),
+            group: "test".into(),
+            params,
+            filter: None,
+        }
+    }
+
+    #[test]
+    fn kafka_sink_accepts_known_data_format() {
+        let factory = KafkaSinkFactory;
+        for v in [
+            Some("ndjson"),
+            Some("arrow_ipc"),
+            Some("arrow_framed"),
+            None,
+        ] {
+            let spec = sink_spec_with_data_format(v, None);
+            assert!(
+                factory.validate_spec(&spec).is_ok(),
+                "expected OK for data_format = {v:?} with default protocol"
+            );
+        }
+    }
+
+    #[test]
+    fn kafka_sink_rejects_unknown_data_format() {
+        let factory = KafkaSinkFactory;
+        // data_format validation only fires when protocol is Arrow
+        let spec = sink_spec_with_data_format(Some("arrowipcc"), Some("arrow"));
+        let err = factory
+            .validate_spec(&spec)
+            .expect_err("unknown data_format with protocol=arrow");
+        assert!(err.to_string().contains("data_format must be one of"));
+    }
+
+    #[test]
+    fn kafka_sink_text_protocol_ignores_data_format() {
+        let factory = KafkaSinkFactory;
+        // When protocol is text (or missing), data_format validation is skipped.
+        let spec = sink_spec_with_data_format(Some("arrowipcc"), Some("text"));
+        assert!(
+            factory.validate_spec(&spec).is_ok(),
+            "text protocol should ignore data_format"
+        );
+        let spec2 = sink_spec_with_data_format(Some("nonsense"), None);
+        assert!(
+            factory.validate_spec(&spec2).is_ok(),
+            "default protocol (text) should ignore data_format"
+        );
+    }
+
+    #[test]
+    fn kafka_sink_def_advertises_data_format() {
+        let def = KafkaSinkFactory.sink_def();
+        assert!(def.allow_override.contains(&"data_format".to_string()));
+        assert!(def.allow_override.contains(&"tag".to_string()));
+        assert_eq!(
+            def.default_params.get("data_format"),
+            Some(&json!("arrow_ipc"))
         );
     }
 }
