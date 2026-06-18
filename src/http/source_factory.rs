@@ -9,6 +9,7 @@ use wp_connector_api::{
 use crate::http::source::{
     HttpSource, HttpSourceConfig, build_source_tags, http_source_queue_capacity,
 };
+use crate::utils::arrow_decode::WireFormat;
 
 pub struct HttpSourceFactory;
 
@@ -46,7 +47,7 @@ impl SourceDefProvider for HttpSourceFactory {
             id: "http_src".into(),
             kind: self.kind().into(),
             scope: ConnectorScope::Source,
-            allow_override: vec!["port", "path"]
+            allow_override: vec!["port", "path", "data_format"]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
@@ -59,6 +60,9 @@ impl SourceDefProvider for HttpSourceFactory {
 fn build_http_source_config(spec: &SourceSpec) -> SourceResult<HttpSourceConfig> {
     let port = required_port(spec, "port")?;
     let path = required_path(spec, "path")?;
+    // Validate data_format up front so a typo is caught at validation time.
+    WireFormat::parse_strict(spec.params.get("data_format").and_then(|v| v.as_str()))
+        .map_err(SourceReason::other)?;
     Ok(HttpSourceConfig { port, path })
 }
 
@@ -103,6 +107,7 @@ fn http_source_defaults() -> ParamMap {
     let mut params = ParamMap::new();
     params.insert("port".into(), json!(18080));
     params.insert("path".into(), json!("/ingest"));
+    params.insert("data_format".into(), json!("ndjson"));
     params
 }
 
@@ -161,5 +166,34 @@ mod tests {
             ("path".into(), json!("/ingest")),
         ]));
         factory.validate_spec(&spec).expect("valid spec");
+    }
+
+    #[test]
+    fn validate_accepts_known_data_format() {
+        let factory = HttpSourceFactory;
+        for v in ["ndjson", "arrow_ipc", "arrow_framed"] {
+            let spec = build_spec(BTreeMap::from([
+                ("port".into(), json!(18080)),
+                ("path".into(), json!("/ingest")),
+                ("data_format".into(), json!(v)),
+            ]));
+            factory
+                .validate_spec(&spec)
+                .unwrap_or_else(|e| panic!("expected OK for data_format={v}: {e}"));
+        }
+    }
+
+    #[test]
+    fn validate_rejects_unknown_data_format() {
+        let factory = HttpSourceFactory;
+        let spec = build_spec(BTreeMap::from([
+            ("port".into(), json!(18080)),
+            ("path".into(), json!("/ingest")),
+            ("data_format".into(), json!("arrowipcc")),
+        ]));
+        let err = factory
+            .validate_spec(&spec)
+            .expect_err("unknown data_format");
+        assert!(err.to_string().contains("data_format must be one of"));
     }
 }

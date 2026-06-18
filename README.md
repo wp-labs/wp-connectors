@@ -98,6 +98,38 @@ The Kafka source implements `wf_connector_api::BatchSource`, producing Arrow `Re
 
 Setting `protocol: arrow` on unsupported sinks (MySQL, Postgres, Elasticsearch, Prometheus, VictoriaMetrics, VictoriaLogs, Count, HTTP) produces a clear validation error listing supported sinks.
 
+### Source direction (Arrow decoding)
+
+Raw-byte **sources** (Kafka, HTTP) now accept a `data_format` parameter that
+selects how each payload is decoded into Arrow `RecordBatch`es. This is the
+source-side counterpart of the sink `protocol: arrow` output.
+
+| `data_format` | Meaning |
+|---------------|---------|
+| `ndjson` (default) | Newline-delimited JSON (line-oriented) |
+| `arrow_ipc` | Arrow IPC Stream (`StreamReader`-compatible) |
+| `arrow_framed` | wp_arrow frame: `[4B tag_len][tag][Arrow IPC Stream]` |
+
+`data_format` is validated strictly at spec parse time — a typo (e.g.
+`arrowipcc`) is rejected with a clear error rather than silently degrading to
+NDJSON.
+
+To turn a raw-byte `DataSource` into a `RecordBatch`-producing `BatchSource`,
+wrap it with `ArrowBatchSource`:
+
+```rust
+use wp_connectors::utils::arrow_batch_source::ArrowBatchSource;
+use wp_connectors::utils::arrow_decode::WireFormat;
+
+// `source` is any DataSource emitting raw bytes (e.g. KafkaSource, HttpSource)
+let batch = ArrowBatchSource::new("my_arrow", source, WireFormat::ArrowStream)?;
+```
+
+`ArrowBatchSource` is **Arrow-only**: it rejects `WireFormat::Ndjson` at
+construction. NDJSON → typed `RecordBatch` conversion (with schema-driven
+columns) is handled by `wp-core-connectors`' `FileBatchSource` /
+`TcpBatchSource`. The Arrow schema is taken from each stream itself.
+
 ## Project Structure
 
 ```
@@ -253,6 +285,30 @@ Kafka source 实现了 `wf_connector_api::BatchSource`，为 warp-fusion CEP 引
 ### 参数校验
 
 在不支持的 sink（MySQL、Postgres、Elasticsearch、Prometheus、VictoriaMetrics、VictoriaLogs、Count、HTTP）上设置 `protocol: arrow` 会返回明确的校验错误，并列出支持的 sink。
+
+### Source 方向（Arrow 解码）
+
+原始字节的 **source**（Kafka、HTTP）现在支持 `data_format` 参数，选择每个 payload 如何被解码为 Arrow `RecordBatch`。这是 sink 侧 `protocol: arrow` 输出的对应物。
+
+| `data_format` | 含义 |
+|---------------|------|
+| `ndjson`（默认） | 换行分隔的 JSON（行式） |
+| `arrow_ipc` | Arrow IPC Stream（`StreamReader` 可读） |
+| `arrow_framed` | wp_arrow 帧：`[4B tag_len][tag][Arrow IPC Stream]` |
+
+`data_format` 在 spec 解析期被严格校验——拼写错误（如 `arrowipcc`）会返回明确错误，而不是静默退化为 NDJSON。
+
+把任意原始字节 `DataSource` 包装成产出 `RecordBatch` 的 `BatchSource`，使用 `ArrowBatchSource`：
+
+```rust
+use wp_connectors::utils::arrow_batch_source::ArrowBatchSource;
+use wp_connectors::utils::arrow_decode::WireFormat;
+
+// `source` 是任何输出原始字节的 DataSource（如 KafkaSource、HttpSource）
+let batch = ArrowBatchSource::new("my_arrow", source, WireFormat::ArrowStream)?;
+```
+
+`ArrowBatchSource` 是 **Arrow 专用**的：构造期会拒绝 `WireFormat::Ndjson`。NDJSON → 类型化 `RecordBatch` 转换（按 schema 构建列）由 `wp-core-connectors` 的 `FileBatchSource` / `TcpBatchSource` 负责。Arrow 的 schema 直接取自每个流本身。
 
 ## 项目结构
 

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.15.5] - 2026-06-18
+
+### Added
+
+- 新增 Source 方向 Arrow 解码能力：`utils::arrow_decode`（`WireFormat` 枚举 + `decode_arrow_ipc_batches` / `decode_arrow_framed_batches`）
+- 新增 `utils::arrow_batch_source::ArrowBatchSource`：包装任意原始字节 `DataSource`，按 `data_format` 解码为 Arrow `RecordBatch`（对应 `wp-core-connectors` 的 `TcpBatchSource` / `FileBatchSource`）；构造期拒绝 `Ndjson`，Arrow 专用
+- Kafka source、HTTP source 支持 `data_format` 参数（`ndjson` / `arrow_ipc` / `arrow_framed`），并在 spec 解析期严格校验（拒绝未知值）
+- Kafka source / HTTP source 的 builtin 定义补上 `data_format` 默认值与 `allow_override`
+
+### Documentation
+
+- README（中英双语）新增 "Source 方向（Arrow 解码）" 章节
+
 ## [0.15.4] - 2026-06-13
 
 ### Changed

@@ -14,6 +14,7 @@ use crate::kafka::{
     KafkaSink, KafkaSource,
     config::{KafkaSinkConf, KafkaSourceConf},
 };
+use crate::utils::arrow_decode::WireFormat;
 
 fn build_kafka_conf_from_spec(
     spec: &wp_connector_api::SourceSpec,
@@ -22,6 +23,10 @@ fn build_kafka_conf_from_spec(
     let topics = parse_topics(spec.params.get("topic"))?;
     let group_id = parse_required_string(spec.params.get("group_id"), "kafka.group_id")?;
     let config = parse_config(spec.params.get("config"))?;
+
+    // Validate data_format up front so a typo is caught at validation time.
+    WireFormat::parse_strict(spec.params.get("data_format").and_then(|v| v.as_str()))
+        .map_err(SourceReason::other)?;
 
     let conf = KafkaSourceConf {
         key: spec.name.clone(),
@@ -286,7 +291,7 @@ impl SourceDefProvider for KafkaSourceFactory {
             id: "kafka_src".into(),
             kind: self.kind().into(),
             scope: ConnectorScope::Source,
-            allow_override: vec!["brokers", "topic", "group_id", "config"]
+            allow_override: vec!["brokers", "topic", "group_id", "config", "data_format"]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
@@ -329,6 +334,7 @@ fn kafka_source_defaults() -> ParamMap {
         "config".into(),
         json!(["auto.offset.reset=latest", "enable.auto.commit=true"]),
     );
+    params.insert("data_format".into(), json!("ndjson"));
     params
 }
 
@@ -518,5 +524,51 @@ mod tests {
         let val = json!("protobuf");
         let p = super::parse_protocol(Some(&val));
         assert_eq!(p, crate::utils::Protocol::Text);
+    }
+
+    // -- data_format validation ------------------------------------------
+
+    fn source_spec_with_data_format(data_format: Option<&str>) -> wp_connector_api::SourceSpec {
+        let mut params = BTreeMap::new();
+        params.insert("brokers".into(), json!("localhost:9092"));
+        params.insert("topic".into(), json!("topic_a"));
+        params.insert("group_id".into(), json!("group-a"));
+        if let Some(v) = data_format {
+            params.insert("data_format".into(), json!(v));
+        }
+        build_source_spec(params)
+    }
+
+    #[test]
+    fn kafka_source_accepts_known_data_format() {
+        for v in [
+            Some("ndjson"),
+            Some("arrow_ipc"),
+            Some("arrow_framed"),
+            None,
+        ] {
+            let spec = source_spec_with_data_format(v);
+            assert!(
+                build_kafka_conf_from_spec(&spec).is_ok(),
+                "expected OK for data_format = {v:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn kafka_source_rejects_unknown_data_format() {
+        let spec = source_spec_with_data_format(Some("arrowipcc"));
+        let err = build_kafka_conf_from_spec(&spec).expect_err("unknown data_format");
+        assert!(err.to_string().contains("data_format must be one of"));
+    }
+
+    #[test]
+    fn kafka_source_def_advertises_data_format() {
+        let def = KafkaSourceFactory.source_def();
+        assert!(def.allow_override.contains(&"data_format".to_string()));
+        assert_eq!(
+            def.default_params.get("data_format"),
+            Some(&json!("ndjson"))
+        );
     }
 }

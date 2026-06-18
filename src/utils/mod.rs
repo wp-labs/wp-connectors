@@ -2,6 +2,8 @@
 pub mod fmt;
 pub mod time_stat_utils;
 
+pub mod arrow_batch_source;
+pub mod arrow_decode;
 pub mod arrow_fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
