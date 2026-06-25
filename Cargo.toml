@@ -3,7 +3,7 @@ resolver = "2"
 members = ["."]  # 当前包作为workspace成员
 
 [workspace.package]
-version = "0.15.6" # @gxl:set(version)
+version = "0.15.7" # @gxl:set(version)
 edition = "2024"
 description = "Stable connectors for warp-parse supporting source and sink functionality"
 authors = ["WP Labs Team"]
