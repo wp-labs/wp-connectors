@@ -94,6 +94,7 @@ victoriametrics = [
     "dep:lazy_static",
     "dep:uuid",
     "dep:sysinfo",
+    "dep:strum"
 ]
 doris = ["dep:reqwest"]
 elasticsearch = ["dep:reqwest"]
@@ -141,6 +142,7 @@ uuid = { workspace = true, optional = true }
 flate2 = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 sysinfo = { version = "0.39", default-features = false, features = ["system"], optional = true }
+strum = { version = "0.28", features = ["derive"], optional = true }
 
 [dev-dependencies]
 wp-connector-test-utils = { git = "https://github.com/wp-labs/wp-connector-test-utils.git", tag = "v0.2.2"}

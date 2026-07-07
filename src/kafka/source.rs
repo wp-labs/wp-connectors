@@ -2,12 +2,13 @@ use async_trait::async_trait;
 use orion_error::conversion::SourceRawErr;
 use orion_error::conversion::ToStructError;
 use rdkafka_wrap::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
-use rdkafka_wrap::client::DefaultClientContext;
+use rdkafka_wrap::client::{ClientContext, DefaultClientContext};
 use rdkafka_wrap::config::RDKafkaLogLevel;
+use rdkafka_wrap::consumer::{Consumer, ConsumerContext, Rebalance, StreamConsumer};
 use rdkafka_wrap::error::KafkaError;
+use rdkafka_wrap::statistics::Statistics;
 use rdkafka_wrap::types::RDKafkaErrorCode;
-use rdkafka_wrap::{ClientConfig, KWConsumer, KWConsumerConf, Message};
-use std::collections::HashMap;
+use rdkafka_wrap::{ClientConfig, Message};
 use std::fmt::{Display, Formatter};
 use wp_model_core::event_id::next_wp_event_id;
 use wp_model_core::raw::RawData;
@@ -15,10 +16,47 @@ use wp_model_core::raw::RawData;
 use crate::WP_SRC_VAL;
 use wp_connector_api::{DataSource, SourceBatch, SourceEvent, SourceReason, SourceResult, Tags};
 
+#[cfg(feature = "victoriametrics")]
+use prometheus::{GaugeVec, register_gauge_vec};
+
+#[cfg(feature = "victoriametrics")]
+lazy_static::lazy_static! {
+    static ref KAFKA_CONSUMER_LAG: GaugeVec = register_gauge_vec!(
+        "kafka_consumer_lag",
+        "Kafka consumer lag per topic-partition",
+        &["source_name","topic", "partition"]
+    ).expect("register kafka_consumer_lag metric failed");
+}
+
+struct KafkaContext {
+    source_name: String,
+}
+
+impl ClientContext for KafkaContext {
+    #[cfg(feature = "victoriametrics")]
+    fn stats(&self, stats: Statistics) {
+        for (topic_name, topic) in &stats.topics {
+            for (part_id, partition) in &topic.partitions {
+                if *part_id < 0 {
+                    continue; // skip unassigned partitions (RD_KAFKA_PARTITION_UA = -1)
+                }
+                KAFKA_CONSUMER_LAG
+                    .with_label_values(&[&self.source_name, topic_name, &part_id.to_string()])
+                    .set(partition.consumer_lag as f64);
+            }
+        }
+    }
+}
+
+impl ConsumerContext for KafkaContext {
+    fn pre_rebalance(&self, _rebalance: &Rebalance) {}
+    fn post_rebalance(&self, _rebalance: &Rebalance) {}
+}
+
 pub struct KafkaSource {
     key: String,
     tags: Tags,
-    consumer: KWConsumer,
+    consumer: StreamConsumer<KafkaContext>,
 }
 
 impl KafkaSource {
@@ -36,21 +74,39 @@ impl KafkaSource {
         create_topics(config).await?;
 
         wp_log::info_data!("[kafka] topics: {:?}, group_id: {}", config.topic, group_id);
-        let mut conf = KWConsumerConf::new(&config.brokers, group_id)
-            .set_log_level(RDKafkaLogLevel::Info)
-            .set_topics(config.topic.clone());
-        if let Some(config) = &config.config {
-            let mut map = HashMap::new();
-            for c in config {
+
+        let mut client_config = ClientConfig::new();
+        client_config
+            .set("group.id", group_id)
+            .set("bootstrap.servers", &config.brokers)
+            .set("enable.partition.eof", "false")
+            .set("enable.auto.commit", "true")
+            .set("enable.auto.offset.store", "true")
+            .set("receive.message.max.bytes", "100001000")
+            .set("auto.offset.reset", "earliest")
+            .set("statistics.interval.ms", "5000")
+            .set_log_level(RDKafkaLogLevel::Info);
+
+        if let Some(custom_configs) = &config.config {
+            for c in custom_configs {
                 let v: Vec<&str> = c.split('=').collect();
                 if v.len() >= 2 {
-                    map.insert(v[0].trim(), v[1].trim());
+                    client_config.set(v[0].trim(), v[1].trim());
                 }
             }
-            conf = conf.set_config(map);
         }
-        let consumer = KWConsumer::new_subscribe(conf)
-            .source_raw_err(SourceReason::SupplierError, "subscribe kafka source failed")?;
+
+        let consumer: StreamConsumer<KafkaContext> = client_config
+            .create_with_context(KafkaContext {
+                source_name: key.clone(),
+            })
+            .source_raw_err(SourceReason::SupplierError, "create kafka consumer failed")?;
+
+        let topics: Vec<&str> = config.topic.iter().map(|s| s.as_str()).collect();
+        consumer
+            .subscribe(&topics)
+            .source_raw_err(SourceReason::SupplierError, "subscribe kafka topics failed")?;
+
         Ok(Self {
             key,
             consumer,
@@ -218,7 +274,6 @@ mod wf_impl {
             let mut ts_builder = Int64Builder::new();
             let mut key_builder = BinaryBuilder::new();
             let mut payload_builder = BinaryBuilder::new();
-
             loop {
                 match self.consumer.recv().await {
                     Ok(msg) => {

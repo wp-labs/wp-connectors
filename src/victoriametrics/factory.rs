@@ -8,7 +8,7 @@ use wp_connector_api::{
     SinkReason, SinkResult, SinkSpec,
 };
 
-use crate::http_utils::join_endpoint_path;
+use crate::victoriametrics::http_utils::join_endpoint_path;
 
 use super::config::VictoriaMetric;
 use super::exporter::VictoriaMetricExporter;
@@ -21,7 +21,6 @@ impl SinkFactory for VictoriaMetricFactory {
         "victoriametrics"
     }
     fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
-        crate::utils::reject_arrow_protocol(spec, self.kind())?;
         let endpoint = spec
             .params
             .get("endpoint")
