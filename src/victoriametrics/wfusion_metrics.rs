@@ -407,3 +407,66 @@ impl FromRecord for AlertDispatchFailedTotal {
 pub fn alert_dispatch_failed_stat(data: &DataRecord) {
     record_counter::<AlertDispatchFailedTotal>(data, &ALERT_DISPATCH_FAILED_TOTAL);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wp_model_core::model::DataField;
+
+    #[test]
+    fn record_value_to_f64_parses_digit() {
+        let mut r = DataRecord::default();
+        r.append(DataField::from_digit("value", 42));
+        assert_eq!(record_value_to_f64(&r), 42.0);
+    }
+
+    #[test]
+    fn record_value_to_f64_parses_chars_int() {
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("value", "99"));
+        assert_eq!(record_value_to_f64(&r), 99.0);
+    }
+
+    #[test]
+    fn record_value_to_f64_fallback_on_garbage_chars() {
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("value", "not-a-number"));
+        assert_eq!(record_value_to_f64(&r), 0.0);
+    }
+
+    #[test]
+    fn receive_total_stat_increments_counter() {
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("name", "rows_total"));
+        r.append(DataField::from_chars("label", "src-a"));
+        r.append(DataField::from_digit("value", 3));
+        r.append(DataField::from_chars("source_type", "kafka"));
+        r.append(DataField::from_chars("machine", "node1"));
+
+        let (m, _count) = ReceiveTotalMetrics::from_record(&r).unwrap();
+        let labels = Labels::values(&m);
+        let before = RECEIVE_TOTAL.with_label_values(&labels).get();
+
+        receive_total_stat(&r);
+
+        assert_eq!(RECEIVE_TOTAL.with_label_values(&labels).get(), before + 3);
+    }
+
+    #[test]
+    fn receive_total_stat_skips_on_wrong_name() {
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("name", "other_metric"));
+        r.append(DataField::from_chars("label", "src-a"));
+        r.append(DataField::from_digit("value", 5));
+
+        assert!(ReceiveTotalMetrics::from_record(&r).is_none());
+    }
+
+    #[test]
+    fn metric_struct_defaults_are_set_by_new() {
+        let m = ReceiveTotalMetrics::new();
+        assert!(!m.pid.is_empty());
+        assert_eq!(m.access_type, "service");
+        assert_eq!(m.access_name, "warp-fusion");
+    }
+}

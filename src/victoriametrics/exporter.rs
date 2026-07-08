@@ -298,6 +298,19 @@ mod tests {
         assert_eq!(duration_millis_i64(huge), i64::MAX);
     }
 
+    #[test]
+    fn stage_parse_all_variants_and_reject_invalid() {
+        let cases = &[
+            "Pick", "Parse", "Sink", "Receiver", "Router", "Window", "Rule", "Alert", "Event",
+            "Evictor",
+        ];
+        for &s in cases {
+            assert!(s.parse::<Stage>().is_ok(), "stage '{}' should parse", s);
+        }
+        assert!("Unknown".parse::<Stage>().is_err());
+        assert!("pick".parse::<Stage>().is_err());
+    }
+
     fn test_exporter() -> VictoriaMetricExporter {
         let client = reqwest::Client::builder()
             .no_proxy()
