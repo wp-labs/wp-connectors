@@ -11,7 +11,28 @@ use wp_connector_api::{SinkReason, SinkResult};
 use wp_log::{error_data, info_data};
 use wp_model_core::model::{DataRecord, Value};
 
-use super::metrics::{parse_all_stat, receive_data_stat, sink_stat, system_usage_stat};
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+enum Stage {
+    Pick,
+    Parse,
+    Sink,
+    Receiver,
+    Router,
+    Window,
+    Rule,
+    Alert,
+    Event,
+    Evictor,
+}
+
+use crate::victoriametrics::wfusion_metrics::{
+    alert_dispatch_failed_stat, alert_emitted_total_stat, event_e2e_latency_second_p99_stat,
+    receive_total_stat, route_errors_stat, rule_events_total_stat, rule_instances_stat,
+    rule_matches_total_stat, window_late_stat, window_memory_capacity_stat, window_memory_stat,
+    window_rows_stat,
+};
+
+use super::wparse_metrics::{parse_all_stat, receive_data_stat, sink_stat, system_usage_stat};
 pub(crate) struct VictoriaMetricExporter {
     write_url: String,
     client: reqwest::Client,
@@ -170,17 +191,47 @@ impl wp_connector_api::AsyncRecordSink for VictoriaMetricExporter {
     /// 解耦"数据收集"与"数据上报"，消除事件驱动推送与定时推送的时序冲突。
     async fn sink_record(&mut self, data: &DataRecord) -> SinkResult<()> {
         if let Some(Value::Chars(field)) = data.get2("stage").map(|x| x.get_value()) {
-            match field.as_str() {
-                "Pick" => {
-                    receive_data_stat(data);
+            match field.as_str().parse::<Stage>() {
+                Ok(stage) => match stage {
+                    Stage::Pick => {
+                        receive_data_stat(data);
+                    }
+                    Stage::Parse => {
+                        parse_all_stat(data);
+                    }
+                    Stage::Sink => {
+                        sink_stat(data);
+                    }
+                    Stage::Receiver => {
+                        receive_total_stat(data);
+                    }
+                    Stage::Router => {
+                        route_errors_stat(data);
+                    }
+                    Stage::Window => {
+                        window_rows_stat(data);
+                        window_memory_stat(data);
+                        window_memory_capacity_stat(data);
+                        window_late_stat(data);
+                    }
+
+                    Stage::Rule => {
+                        rule_events_total_stat(data);
+                        rule_matches_total_stat(data);
+                        rule_instances_stat(data);
+                    }
+                    Stage::Alert => {
+                        alert_emitted_total_stat(data);
+                        alert_dispatch_failed_stat(data);
+                    }
+                    Stage::Event => {
+                        event_e2e_latency_second_p99_stat(data);
+                    }
+                    Stage::Evictor => {}
+                },
+                Err(_) => {
+                    error_data!("Invalid stage value: {}", field);
                 }
-                "Parse" => {
-                    parse_all_stat(data);
-                }
-                "Sink" => {
-                    sink_stat(data);
-                }
-                _ => {}
             }
         }
         Ok(())
@@ -235,7 +286,11 @@ impl wp_connector_api::AsyncRawDataSink for VictoriaMetricExporter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::victoriametrics::metrics::{
+    use crate::victoriametrics::wfusion_metrics::{
+        Labels, RECEIVE_TOTAL, ROUTE_ERRORS_TOTAL, RULE_MATCHES_TOTAL, ReceiveTotalMetrics,
+        RouteErrorsTotal, RuleMatchesTotal, WINDOW_ROWS_TOTAL, WindowRowsTotal,
+    };
+    use crate::victoriametrics::wparse_metrics::{
         PARSE_ALL, RECV_FROM_SOURCE, SEND_TO_SINK, parse_all, send_sink, source_values,
     };
     use wp_connector_api::AsyncRecordSink;
@@ -245,6 +300,19 @@ mod tests {
     fn duration_millis_i64_saturates_instead_of_overflowing() {
         let huge = Duration::from_millis(u64::MAX);
         assert_eq!(duration_millis_i64(huge), i64::MAX);
+    }
+
+    #[test]
+    fn stage_parse_all_variants_and_reject_invalid() {
+        let cases = &[
+            "Pick", "Parse", "Sink", "Receiver", "Router", "Window", "Rule", "Alert", "Event",
+            "Evictor",
+        ];
+        for &s in cases {
+            assert!(s.parse::<Stage>().is_ok(), "stage '{}' should parse", s);
+        }
+        assert!("Unknown".parse::<Stage>().is_err());
+        assert!("pick".parse::<Stage>().is_err());
     }
 
     fn test_exporter() -> VictoriaMetricExporter {
@@ -316,6 +384,70 @@ mod tests {
         let sink_before = sink_counter.get();
         exporter.sink_record(&sink_record_data).await.unwrap();
         assert_eq!(sink_counter.get(), sink_before + 1);
+    }
+
+    /// 覆盖 Receiver/Router/Window/Rule 四个新 stage 的指标分发
+    #[tokio::test]
+    async fn sink_record_updates_wfusion_metrics() {
+        let mut exporter = test_exporter();
+
+        // Receiver → receive_total_stat
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("stage", "Receiver"));
+        r.append(DataField::from_chars("name", "rows_total"));
+        r.append(DataField::from_chars("label", "src-1"));
+        r.append(DataField::from_digit("value", 10));
+        let mut m = ReceiveTotalMetrics::new();
+        m.source_name = "src-1".into();
+        let labels = m.values();
+        let before = RECEIVE_TOTAL.with_label_values(&labels).get();
+        exporter.sink_record(&r).await.unwrap();
+        assert_eq!(RECEIVE_TOTAL.with_label_values(&labels).get(), before + 10);
+
+        // Router → route_errors_stat
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("stage", "Router"));
+        r.append(DataField::from_chars("name", "route_errors_total"));
+        r.append(DataField::from_chars("label", "src-2"));
+        r.append(DataField::from_digit("value", 1));
+        let mut m = RouteErrorsTotal::new();
+        m.source_name = "src-2".into();
+        let labels = m.values();
+        let before = ROUTE_ERRORS_TOTAL.with_label_values(&labels).get();
+        exporter.sink_record(&r).await.unwrap();
+        assert_eq!(
+            ROUTE_ERRORS_TOTAL.with_label_values(&labels).get(),
+            before + 1
+        );
+
+        // Window → window_rows_stat
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("stage", "Window"));
+        r.append(DataField::from_chars("name", "rows"));
+        r.append(DataField::from_chars("label", "win-1"));
+        r.append(DataField::from_digit("value", 7));
+        let mut m = WindowRowsTotal::new();
+        m.window_name = "win-1".into();
+        let labels = m.values();
+        WINDOW_ROWS_TOTAL.with_label_values(&labels).set(0.0);
+        exporter.sink_record(&r).await.unwrap();
+        assert_eq!(WINDOW_ROWS_TOTAL.with_label_values(&labels).get(), 7.0);
+
+        // Rule → rule_matches_total_stat
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("stage", "Rule"));
+        r.append(DataField::from_chars("name", "matches_total"));
+        r.append(DataField::from_chars("label", "rule-1"));
+        r.append(DataField::from_digit("value", 3));
+        let mut m = RuleMatchesTotal::new();
+        m.rule_name = "rule-1".into();
+        let labels = m.values();
+        let before = RULE_MATCHES_TOTAL.with_label_values(&labels).get();
+        exporter.sink_record(&r).await.unwrap();
+        assert_eq!(
+            RULE_MATCHES_TOTAL.with_label_values(&labels).get(),
+            before + 3
+        );
     }
 
     // #[tokio::test]

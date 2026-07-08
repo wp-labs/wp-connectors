@@ -51,3 +51,7 @@ pub mod victoriametrics;
 // HTTP：可选功能，启用方式 `--features http`
 #[cfg(feature = "http")]
 pub mod http;
+
+// UDP：可选功能，启用方式 `--features udp`
+#[cfg(feature = "udp")]
+pub mod udp;
