@@ -130,4 +130,22 @@ mod tests {
         .unwrap_err();
         assert!(err.to_string().contains("udp.port"));
     }
+
+    #[test]
+    fn udp_conf_send_buffer_size_default_and_custom() {
+        let conf = UdpSinkSpec::from_params(&mk_params(&[("addr", json!("1.1.1.1"))])).unwrap();
+        assert_eq!(conf.send_buffer_size, 65536);
+
+        let conf = UdpSinkSpec::from_params(&mk_params(&[
+            ("addr", json!("1.1.1.1")),
+            ("send_buffer_size", json!(32768)),
+        ]))
+        .unwrap();
+        assert_eq!(conf.send_buffer_size, 32768);
+    }
+
+    #[test]
+    fn factory_kind_is_udp() {
+        assert_eq!(UdpSinkFactory.kind(), "udp");
+    }
 }

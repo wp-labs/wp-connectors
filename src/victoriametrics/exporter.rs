@@ -286,6 +286,10 @@ impl wp_connector_api::AsyncRawDataSink for VictoriaMetricExporter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::victoriametrics::wfusion_metrics::{
+        Labels, RECEIVE_TOTAL, ROUTE_ERRORS_TOTAL, RULE_MATCHES_TOTAL, ReceiveTotalMetrics,
+        RouteErrorsTotal, RuleMatchesTotal, WINDOW_ROWS_TOTAL, WindowRowsTotal,
+    };
     use crate::victoriametrics::wparse_metrics::{
         PARSE_ALL, RECV_FROM_SOURCE, SEND_TO_SINK, parse_all, send_sink, source_values,
     };
@@ -380,6 +384,70 @@ mod tests {
         let sink_before = sink_counter.get();
         exporter.sink_record(&sink_record_data).await.unwrap();
         assert_eq!(sink_counter.get(), sink_before + 1);
+    }
+
+    /// 覆盖 Receiver/Router/Window/Rule 四个新 stage 的指标分发
+    #[tokio::test]
+    async fn sink_record_updates_wfusion_metrics() {
+        let mut exporter = test_exporter();
+
+        // Receiver → receive_total_stat
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("stage", "Receiver"));
+        r.append(DataField::from_chars("name", "rows_total"));
+        r.append(DataField::from_chars("label", "src-1"));
+        r.append(DataField::from_digit("value", 10));
+        let mut m = ReceiveTotalMetrics::new();
+        m.source_name = "src-1".into();
+        let labels = m.values();
+        let before = RECEIVE_TOTAL.with_label_values(&labels).get();
+        exporter.sink_record(&r).await.unwrap();
+        assert_eq!(RECEIVE_TOTAL.with_label_values(&labels).get(), before + 10);
+
+        // Router → route_errors_stat
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("stage", "Router"));
+        r.append(DataField::from_chars("name", "route_errors_total"));
+        r.append(DataField::from_chars("label", "src-2"));
+        r.append(DataField::from_digit("value", 1));
+        let mut m = RouteErrorsTotal::new();
+        m.source_name = "src-2".into();
+        let labels = m.values();
+        let before = ROUTE_ERRORS_TOTAL.with_label_values(&labels).get();
+        exporter.sink_record(&r).await.unwrap();
+        assert_eq!(
+            ROUTE_ERRORS_TOTAL.with_label_values(&labels).get(),
+            before + 1
+        );
+
+        // Window → window_rows_stat
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("stage", "Window"));
+        r.append(DataField::from_chars("name", "rows"));
+        r.append(DataField::from_chars("label", "win-1"));
+        r.append(DataField::from_digit("value", 7));
+        let mut m = WindowRowsTotal::new();
+        m.window_name = "win-1".into();
+        let labels = m.values();
+        WINDOW_ROWS_TOTAL.with_label_values(&labels).set(0.0);
+        exporter.sink_record(&r).await.unwrap();
+        assert_eq!(WINDOW_ROWS_TOTAL.with_label_values(&labels).get(), 7.0);
+
+        // Rule → rule_matches_total_stat
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("stage", "Rule"));
+        r.append(DataField::from_chars("name", "matches_total"));
+        r.append(DataField::from_chars("label", "rule-1"));
+        r.append(DataField::from_digit("value", 3));
+        let mut m = RuleMatchesTotal::new();
+        m.rule_name = "rule-1".into();
+        let labels = m.values();
+        let before = RULE_MATCHES_TOTAL.with_label_values(&labels).get();
+        exporter.sink_record(&r).await.unwrap();
+        assert_eq!(
+            RULE_MATCHES_TOTAL.with_label_values(&labels).get(),
+            before + 3
+        );
     }
 
     // #[tokio::test]

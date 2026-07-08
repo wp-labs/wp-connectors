@@ -5,7 +5,7 @@ use crate::victoriametrics::wparse_metrics::IntoOptField;
 
 use prometheus::{GaugeVec, IntCounterVec, register_gauge_vec, register_int_counter_vec};
 
-trait Labels {
+pub(crate) trait Labels {
     fn values(&self) -> Vec<&str>;
 }
 
@@ -413,57 +413,56 @@ mod tests {
     use super::*;
     use wp_model_core::model::DataField;
 
+    fn mk(name: &str, label: &str, value: i64) -> DataRecord {
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("name", name));
+        r.append(DataField::from_chars("label", label));
+        r.append(DataField::from_digit("value", value));
+        r
+    }
+
+    macro_rules! assert_gauge {
+        ($name:expr, $label:expr, $val:expr, $typ:ty, $metric:ident, $fn:ident) => {
+            let (m, _) = <$typ>::from_record(&mk($name, $label, $val)).unwrap();
+            let l = m.values();
+            $metric.with_label_values(&l).set(0.0);
+            $fn(&mk($name, $label, $val));
+            assert_eq!($metric.with_label_values(&l).get(), $val as f64);
+        };
+    }
+
+    macro_rules! assert_counter {
+        ($name:expr, $label:expr, $val:expr, $typ:ty, $metric:ident, $fn:ident) => {
+            let (m, _) = <$typ>::from_record(&mk($name, $label, $val)).unwrap();
+            let l = m.values();
+            let before = $metric.with_label_values(&l).get();
+            $fn(&mk($name, $label, $val));
+            assert_eq!($metric.with_label_values(&l).get(), before + $val as u64);
+        };
+    }
+
     #[test]
-    fn record_value_to_f64_parses_digit() {
+    fn record_value_to_f64_parses() {
         let mut r = DataRecord::default();
         r.append(DataField::from_digit("value", 42));
         assert_eq!(record_value_to_f64(&r), 42.0);
-    }
 
-    #[test]
-    fn record_value_to_f64_parses_chars_int() {
         let mut r = DataRecord::default();
         r.append(DataField::from_chars("value", "99"));
         assert_eq!(record_value_to_f64(&r), 99.0);
-    }
 
-    #[test]
-    fn record_value_to_f64_fallback_on_garbage_chars() {
         let mut r = DataRecord::default();
         r.append(DataField::from_chars("value", "not-a-number"));
         assert_eq!(record_value_to_f64(&r), 0.0);
     }
 
     #[test]
-    fn receive_total_stat_increments_counter() {
-        let mut r = DataRecord::default();
-        r.append(DataField::from_chars("name", "rows_total"));
-        r.append(DataField::from_chars("label", "src-a"));
-        r.append(DataField::from_digit("value", 3));
-        r.append(DataField::from_chars("source_type", "kafka"));
-        r.append(DataField::from_chars("machine", "node1"));
-
-        let (m, _count) = ReceiveTotalMetrics::from_record(&r).unwrap();
-        let labels = Labels::values(&m);
-        let before = RECEIVE_TOTAL.with_label_values(&labels).get();
-
-        receive_total_stat(&r);
-
-        assert_eq!(RECEIVE_TOTAL.with_label_values(&labels).get(), before + 3);
+    fn from_record_rejects_wrong_name() {
+        assert!(ReceiveTotalMetrics::from_record(&mk("other", "x", 1)).is_none());
     }
 
     #[test]
-    fn receive_total_stat_skips_on_wrong_name() {
-        let mut r = DataRecord::default();
-        r.append(DataField::from_chars("name", "other_metric"));
-        r.append(DataField::from_chars("label", "src-a"));
-        r.append(DataField::from_digit("value", 5));
-
-        assert!(ReceiveTotalMetrics::from_record(&r).is_none());
-    }
-
-    #[test]
-    fn metric_struct_defaults_are_set_by_new() {
+    fn metric_new_sets_defaults() {
         let m = ReceiveTotalMetrics::new();
         assert!(!m.pid.is_empty());
         assert_eq!(m.access_type, "service");
@@ -471,18 +470,103 @@ mod tests {
     }
 
     #[test]
-    fn window_rows_gauge_is_set() {
-        let mut r = DataRecord::default();
-        r.append(DataField::from_chars("name", "rows"));
-        r.append(DataField::from_chars("label", "win-1"));
-        r.append(DataField::from_digit("value", 42));
+    fn receive_total_stat_with_optional_fields() {
+        let mut r = mk("rows_total", "src-a", 3);
+        r.append(DataField::from_chars("source_type", "kafka"));
+        r.append(DataField::from_chars("machine", "node1"));
+        let (m, _) = ReceiveTotalMetrics::from_record(&r).unwrap();
+        let l = m.values();
+        let before = RECEIVE_TOTAL.with_label_values(&l).get();
+        receive_total_stat(&r);
+        assert_eq!(RECEIVE_TOTAL.with_label_values(&l).get(), before + 3);
+    }
 
-        let (m, _) = WindowRowsTotal::from_record(&r).unwrap();
-        let labels = Labels::values(&m);
-        WINDOW_ROWS_TOTAL.with_label_values(&labels).set(0.0);
+    #[test]
+    fn all_other_stats() {
+        assert_gauge!(
+            "rows",
+            "win-1",
+            42,
+            WindowRowsTotal,
+            WINDOW_ROWS_TOTAL,
+            window_rows_stat
+        );
+        assert_gauge!(
+            "memory_bytes",
+            "win-1",
+            1024,
+            WindowMemoryBytes,
+            WINDOW_MEMORY_BYTES,
+            window_memory_stat
+        );
+        assert_gauge!(
+            "window_capacity_bytes",
+            "win-1",
+            4096,
+            WindowMemoryCapacityBytes,
+            WINDOW_MEMORY_CAPACITY_BYTES,
+            window_memory_capacity_stat
+        );
+        assert_counter!(
+            "late_total",
+            "win-1",
+            3,
+            WindowLateTotal,
+            WINDOW_LATE_TOTAL,
+            window_late_stat
+        );
+        assert_counter!(
+            "events_total",
+            "rule-1",
+            4,
+            RuleEventsTotal,
+            RULE_EVENTS_TOTAL,
+            rule_events_total_stat
+        );
+        assert_counter!(
+            "matches_total",
+            "rule-1",
+            3,
+            RuleMatchesTotal,
+            RULE_MATCHES_TOTAL,
+            rule_matches_total_stat
+        );
+        assert_gauge!(
+            "instances",
+            "rule-1",
+            5,
+            RuleInstances,
+            RULE_INSTANCES_TOTAL,
+            rule_instances_stat
+        );
+        assert_gauge!(
+            "e2e_latency_seconds_p99",
+            "ignored",
+            150,
+            EventE2ELatencySecondP99,
+            EVENT_E2E_LATENCY_SECOND_P99,
+            event_e2e_latency_second_p99_stat
+        );
+        assert_counter!(
+            "sink_dispatch_failed_total",
+            "ignored",
+            2,
+            AlertDispatchFailedTotal,
+            ALERT_DISPATCH_FAILED_TOTAL,
+            alert_dispatch_failed_stat
+        );
 
-        window_rows_stat(&r);
-
-        assert_eq!(WINDOW_ROWS_TOTAL.with_label_values(&labels).get(), 42.0);
+        // alert_emitted_total_stat has optional machine/scope_key fields
+        let mut r = mk("emitted_total", "alert-1", 1);
+        r.append(DataField::from_chars("machine", "node1"));
+        r.append(DataField::from_chars("scope_key", "scope-a"));
+        let mut m = AlertEmittedTotal::new();
+        m.alert_name = "alert-1".into();
+        m.machine_name = "node1".into();
+        m.scope_key = "scope-a".into();
+        let l = m.values();
+        let before = ALERT_EMITTED_TOTAL.with_label_values(&l).get();
+        alert_emitted_total_stat(&r);
+        assert_eq!(ALERT_EMITTED_TOTAL.with_label_values(&l).get(), before + 1);
     }
 }

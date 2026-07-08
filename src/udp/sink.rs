@@ -111,8 +111,6 @@ impl AsyncRawDataSink for UdpSink {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +149,12 @@ mod tests {
             assert_eq!(&buf[..n], expected);
         }
 
+        sink.sink_bytes_batch(vec![b"x".as_slice(), b"y".as_slice()])
+            .await
+            .unwrap();
+        for expected in [b"x", b"y"] {
+            let n = recv.recv(&mut buf).await.unwrap();
+            assert_eq!(&buf[..n], expected);
+        }
     }
 }
