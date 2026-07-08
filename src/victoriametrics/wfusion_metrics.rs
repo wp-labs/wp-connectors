@@ -469,4 +469,20 @@ mod tests {
         assert_eq!(m.access_type, "service");
         assert_eq!(m.access_name, "warp-fusion");
     }
+
+    #[test]
+    fn window_rows_gauge_is_set() {
+        let mut r = DataRecord::default();
+        r.append(DataField::from_chars("name", "rows"));
+        r.append(DataField::from_chars("label", "win-1"));
+        r.append(DataField::from_digit("value", 42));
+
+        let (m, _) = WindowRowsTotal::from_record(&r).unwrap();
+        let labels = Labels::values(&m);
+        WINDOW_ROWS_TOTAL.with_label_values(&labels).set(0.0);
+
+        window_rows_stat(&r);
+
+        assert_eq!(WINDOW_ROWS_TOTAL.with_label_values(&labels).get(), 42.0);
+    }
 }

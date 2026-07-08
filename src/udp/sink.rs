@@ -110,3 +110,46 @@ impl AsyncRawDataSink for UdpSink {
         Ok(())
     }
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::udp::factory::UdpSinkSpec;
+    use serde_json::json;
+    use wp_connector_api::{AsyncRawDataSink, ParamMap};
+
+    fn spec(addr: &str, port: u16) -> UdpSinkSpec {
+        let mut params = ParamMap::new();
+        params.insert("addr".into(), json!(addr));
+        params.insert("port".into(), json!(port));
+        UdpSinkSpec::from_params(&params).unwrap()
+    }
+
+    #[tokio::test]
+    async fn sink_send_and_recv() {
+        let recv = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let port = recv.local_addr().unwrap().port();
+        let s = spec("127.0.0.1", port);
+        let mut sink = UdpSink::connect(&s).await.unwrap();
+        let mut buf = [0u8; 64];
+
+        // single str / bytes
+        sink.sink_str("hello").await.unwrap();
+        let n = recv.recv(&mut buf).await.unwrap();
+        assert_eq!(&buf[..n], b"hello");
+
+        sink.sink_bytes(b"binary").await.unwrap();
+        let n = recv.recv(&mut buf).await.unwrap();
+        assert_eq!(&buf[..n], b"binary");
+
+        // batch
+        sink.sink_str_batch(vec!["a", "b"]).await.unwrap();
+        for expected in [b"a", b"b"] {
+            let n = recv.recv(&mut buf).await.unwrap();
+            assert_eq!(&buf[..n], expected);
+        }
+
+    }
+}
