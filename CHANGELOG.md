@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.8] - 2026-06-26
+
+### Added
+
+- Kafka source 重构为原生 rdkafka `StreamConsumer`，支持 consumer lag 指标采集
+- warp-fusion 全链路指标采集
+- UDP sink 支持
+
+### Changed
+
+- 依赖更新：educe 0.6→0.7，actions/checkout 6→7，codecov/codecov-action 6→7
+
 ## [0.15.6] - 2026-06-18
 
 ### Added
@@ -234,7 +246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.15.6...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.15.8...HEAD
+[0.15.8]: https://github.com/wp-labs/wp-connectors/compare/v0.15.6...v0.15.8
 [0.15.6]: https://github.com/wp-labs/wp-connectors/compare/v0.15.5...v0.15.6
 [0.15.5]: https://github.com/wp-labs/wp-connectors/compare/v0.15.4...v0.15.5
 [0.15.4]: https://github.com/wp-labs/wp-connectors/compare/v0.15.3...v0.15.4
