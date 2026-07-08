@@ -12,6 +12,7 @@ use wp_log::{error_data, info_data};
 use wp_model_core::model::{DataRecord, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[strum(ascii_case_insensitive)]
 enum Stage {
     Pick,
     Parse,
