@@ -312,8 +312,8 @@ mod tests {
         for &s in cases {
             assert!(s.parse::<Stage>().is_ok(), "stage '{}' should parse", s);
         }
+        assert!("pick".parse::<Stage>().is_ok());
         assert!("Unknown".parse::<Stage>().is_err());
-        assert!("pick".parse::<Stage>().is_err());
     }
 
     fn test_exporter() -> VictoriaMetricExporter {
