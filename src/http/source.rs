@@ -15,7 +15,6 @@ use orion_error::prelude::{SourceErr, SourceRawErr};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::{Mutex, RwLock, mpsc};
-use wp_conf_base::ConfParser;
 use wp_connector_api::{
     CtrlRx, DataSource, SourceBatch, SourceEvent, SourceReason, SourceResult, Tags,
 };
@@ -465,7 +464,15 @@ enum CompressionKind {
 }
 
 pub fn build_source_tags(tags: &[String], config: &HttpSourceConfig) -> Tags {
-    let mut meta_tags = Tags::from_parse(tags);
+    let mut meta_tags = {
+        let mut t = Tags::new();
+        for item in tags {
+            if let Some((k, v)) = item.split_once('=').or_else(|| item.split_once(':')) {
+                t.set(k, v);
+            }
+        }
+        t
+    };
     meta_tags.set(WP_SRC_VAL, config.route_key());
     meta_tags
 }

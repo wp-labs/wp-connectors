@@ -7,7 +7,6 @@ use orion_error::prelude::SourceRawErr;
 use sea_orm::{ConnectOptions, Database};
 use serde_json::json;
 use std::time::Duration;
-use wp_conf_base::ConfParser;
 use wp_connector_api::{
     ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
     SinkReason, SinkResult, SinkSpec, SourceDefProvider, SourceFactory, SourceHandle, SourceMeta,
@@ -75,7 +74,15 @@ impl wp_connector_api::SourceFactory for MySQLSourceFactory {
         if let Some(table) = spec.params.get("table").and_then(|v| v.as_str()) {
             conf.table = Some(table.to_string());
         }
-        let mut meta_tags = Tags::from_parse(&spec.tags);
+        let mut meta_tags = {
+            let mut tags = Tags::new();
+            for item in &spec.tags {
+                if let Some((k, v)) = item.split_once('=').or_else(|| item.split_once(':')) {
+                    tags.set(k, v);
+                }
+            }
+            tags
+        };
         meta_tags.set(WP_SRC_VAL, "mysql");
         let source = MysqlSource::new(spec.name.clone(), meta_tags.clone(), &conf).await?;
 

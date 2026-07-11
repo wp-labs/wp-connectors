@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-06-26
+
+### Changed
+
+- 升级 `wp-connector-api` 从 0.10 到 0.11：`Tags::from_parse` 替换为手动 `split_once('='/'：')` 解析
+- 接入 `wp-connector-utils` v0.1.0，复用共享实现：
+  - `arrow_decode.rs`：decode 函数改为薄 wrapper，委托到 `wp_connector_utils::arrow::decode_*`
+  - `WireFormat` / `SUPPORTED_DATA_FORMATS`：重导出自 `wp_connector_utils::arrow`
+- `KafkaSink` 实现 `sink_records_with_meta`：Arrow 路径用 `resolve_frame_tag` 解析 tag，text 路径用 `inject_oml_name` 注入 `wp_oml_name` 字段
+
 ## [0.15.8] - 2026-06-26
 
 ### Added
@@ -246,7 +256,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.15.8...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/wp-labs/wp-connectors/compare/v0.15.8...v0.17.0
 [0.15.8]: https://github.com/wp-labs/wp-connectors/compare/v0.15.6...v0.15.8
 [0.15.6]: https://github.com/wp-labs/wp-connectors/compare/v0.15.5...v0.15.6
 [0.15.5]: https://github.com/wp-labs/wp-connectors/compare/v0.15.4...v0.15.5

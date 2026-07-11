@@ -3,7 +3,7 @@ resolver = "2"
 members = ["."]  # 当前包作为workspace成员
 
 [workspace.package]
-version = "0.15.8" # @gxl:set(version)
+version = "0.17.0" # @gxl:set(version)
 edition = "2024"
 description = "Stable connectors for warp-parse supporting source and sink functionality"
 authors = ["WP Labs Team"]
@@ -13,7 +13,8 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
 # WP Core Dependencies
-wp-connector-api = "0.10"
+wp-connector-api = "0.11"
+wp-connector-utils = "0.1"
 wp-parse-api =  "0.10"
 wp-model-core = "0.8.9"
 wp-log =  "0.4"
@@ -104,6 +105,7 @@ udp = ["dep:socket2"]
 
 [dependencies]
 wp-connector-api = { workspace = true }
+wp-connector-utils = { workspace = true }
 wp-parse-api = { workspace = true }
 wp-model-core = { workspace = true }
 wp-log = { workspace = true }
@@ -147,8 +149,7 @@ strum = { version = "0.28", features = ["derive"], optional = true }
 socket2 = {version = "0.6", optional = true}
 
 [dev-dependencies]
-wp-connector-test-utils = { git = "https://github.com/wp-labs/wp-connector-test-utils.git", tag = "v0.2.2"}
-# wp-connector-test-utils = { path = "../wp-connector-test-utils" }
+wp-connector-test-utils = { path = "../wp-connector-test-utils" }
 anyhow = { workspace = true }
 env_logger = { workspace = true }
 httpmock = "0.8"
@@ -169,3 +170,7 @@ required-features = ["http"]
 name = "http_sink_concurrent_test"
 path = "examples/http/http_sink_concurrent_test.rs"
 required-features = ["http"]
+
+[patch.crates-io]
+wp-connector-api = { path = "../wp-connector-api" }
+wp-connector-utils = { path = "../wp-connector-utils" }

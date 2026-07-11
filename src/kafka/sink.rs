@@ -115,6 +115,37 @@ impl AsyncRecordSink for KafkaSink {
         }
         Ok(())
     }
+
+    async fn sink_records_with_meta(
+        &mut self,
+        meta: wp_connector_api::BatchMeta,
+        data: Vec<Arc<DataRecord>>,
+    ) -> SinkResult<()> {
+        if self.protocol == Protocol::Arrow {
+            // Resolve tag from meta then delegate
+            let tag = wp_connector_utils::batch::resolve_frame_tag(&meta, &self.tag);
+            if self.data_format == WireFormat::ArrowFramed {
+                use crate::utils::arrow_fmt::records_to_arrow_ipc_frame;
+                let framed_bytes =
+                    records_to_arrow_ipc_frame(tag, &data).owe_sink("arrow framed")?;
+                self.inner
+                    .publish(&framed_bytes, Default::default())
+                    .await
+                    .source_raw_err(SinkReason::Sink, "kafka send arrow framed fail")?;
+            } else {
+                use crate::utils::arrow_fmt::records_to_arrow_ipc;
+                let ipc_bytes = records_to_arrow_ipc(&data).owe_sink("arrow ipc")?;
+                self.inner
+                    .publish(&ipc_bytes, Default::default())
+                    .await
+                    .source_raw_err(SinkReason::Sink, "kafka send arrow fail")?;
+            }
+        } else {
+            let data = wp_connector_utils::batch::inject_oml_name(&meta, data);
+            return self.sink_records(data).await;
+        }
+        Ok(())
+    }
 }
 
 impl KafkaSink {

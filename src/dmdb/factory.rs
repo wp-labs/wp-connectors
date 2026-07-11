@@ -61,7 +61,15 @@ impl SourceFactory for DmdbSourceFactory {
 
     async fn build(&self, spec: &SourceSpec, _ctx: &SourceBuildCtx) -> SourceResult<SourceSvcIns> {
         let conf = build_dmdb_source_conf(spec)?;
-        let mut meta_tags = Tags::from_parse(&spec.tags);
+        let mut meta_tags = {
+    let mut tags = Tags::new();
+    for item in &spec.tags {
+        if let Some((k, v)) = item.split_once('=').or_else(|| item.split_once(':')) {
+            tags.set(k, v);
+        }
+    }
+    tags
+};
         meta_tags.set(WP_SRC_VAL, "dmdb");
         let source = DmdbSource::new(spec.name.clone(), meta_tags.clone(), &conf).await?;
 

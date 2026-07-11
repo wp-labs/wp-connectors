@@ -3,7 +3,6 @@ use orion_error::prelude::{SourceErr, SourceRawErr};
 use sea_orm::{ConnectOptions, Database};
 use serde_json::{Value, json};
 use std::time::Duration;
-use wp_conf_base::ConfParser;
 use wp_connector_api::{
     ConnectorDef, ConnectorScope, ParamMap, SinkBuildCtx, SinkDefProvider, SinkError, SinkFactory,
     SinkHandle, SinkReason, SinkResult, SinkSpec, SourceBuildCtx, SourceDefProvider, SourceError,
@@ -33,7 +32,15 @@ impl SourceFactory for PostgresSourceFactory {
 
     async fn build(&self, spec: &SourceSpec, _ctx: &SourceBuildCtx) -> SourceResult<SourceSvcIns> {
         let conf = build_postgres_source_conf(spec)?;
-        let mut meta_tags = Tags::from_parse(&spec.tags);
+        let mut meta_tags = {
+            let mut tags = Tags::new();
+            for item in &spec.tags {
+                if let Some((k, v)) = item.split_once('=').or_else(|| item.split_once(':')) {
+                    tags.set(k, v);
+                }
+            }
+            tags
+        };
         meta_tags.set(WP_SRC_VAL, "postgres");
         let source = PostgresSource::new(spec.name.clone(), meta_tags.clone(), &conf).await?;
 
