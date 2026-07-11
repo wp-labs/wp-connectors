@@ -12,6 +12,7 @@ use wp_log::{error_data, info_data};
 use wp_model_core::model::{DataRecord, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[strum(ascii_case_insensitive)]
 enum Stage {
     Pick,
     Parse,
@@ -311,8 +312,8 @@ mod tests {
         for &s in cases {
             assert!(s.parse::<Stage>().is_ok(), "stage '{}' should parse", s);
         }
+        assert!("pick".parse::<Stage>().is_ok());
         assert!("Unknown".parse::<Stage>().is_err());
-        assert!("pick".parse::<Stage>().is_err());
     }
 
     fn test_exporter() -> VictoriaMetricExporter {
