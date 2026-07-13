@@ -158,7 +158,7 @@ rand = { workspace = true }
 sqlx = { workspace = true }
 async-broadcast = "0.7"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
-
+wp-connector-test-utils =  { git = "https://github.com/wp-labs/wp-connector-test-utils.git" , tag = "v0.2.2" }
 
 [[example]]
 name = "http_sink_example"
@@ -169,5 +169,3 @@ required-features = ["http"]
 name = "http_sink_concurrent_test"
 path = "examples/http/http_sink_concurrent_test.rs"
 required-features = ["http"]
-
-
