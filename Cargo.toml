@@ -149,7 +149,6 @@ strum = { version = "0.28", features = ["derive"], optional = true }
 socket2 = {version = "0.6", optional = true}
 
 [dev-dependencies]
-wp-connector-test-utils = { path = "../wp-connector-test-utils" }
 anyhow = { workspace = true }
 env_logger = { workspace = true }
 httpmock = "0.8"
@@ -171,6 +170,4 @@ name = "http_sink_concurrent_test"
 path = "examples/http/http_sink_concurrent_test.rs"
 required-features = ["http"]
 
-[patch.crates-io]
-wp-connector-api = { path = "../wp-connector-api" }
-wp-connector-utils = { path = "../wp-connector-utils" }
+
