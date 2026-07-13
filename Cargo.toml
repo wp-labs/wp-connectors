@@ -158,7 +158,7 @@ rand = { workspace = true }
 sqlx = { workspace = true }
 async-broadcast = "0.7"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
-wp-connector-test-utils =  { git = "https://github.com/wp-labs/wp-connector-test-utils.git" , tag = "v0.2.2" }
+wp-connector-test-utils =  { git = "https://github.com/wp-labs/wp-connector-test-utils.git" , tag = "v0.2.3" }
 
 [[example]]
 name = "http_sink_example"
