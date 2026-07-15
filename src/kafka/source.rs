@@ -71,7 +71,12 @@ impl KafkaSource {
         config: &KafkaSourceConf,
     ) -> SourceResult<Self> {
         // Create topics if not exists (best-effort)
-        create_topics(config).await?;
+        if let Err(err) = create_topics(config).await {
+            wp_log::warn_data!(
+                "[kafka] create topics failed, continuing: {}",
+                err.to_string()
+            );
+        }
 
         wp_log::info_data!("[kafka] topics: {:?}, group_id: {}", config.topic, group_id);
 
