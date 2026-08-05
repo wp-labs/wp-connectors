@@ -91,7 +91,7 @@ impl MysqlSource {
             table,
             step_len
         );
-        let path_str = format!("./.run/.checkpoints/{}.dat", &key);
+        let path_str = format!("./.run/.checkpoints/{}.dat", key);
         let checkpoint_path = Path::new(&path_str).to_path_buf();
         Ok(Self {
             key,

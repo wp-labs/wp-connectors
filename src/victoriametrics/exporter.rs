@@ -425,10 +425,10 @@ mod tests {
         let mut r = DataRecord::default();
         r.append(DataField::from_chars("stage", "Window"));
         r.append(DataField::from_chars("name", "rows"));
-        r.append(DataField::from_chars("label", "win-1"));
+        r.append(DataField::from_chars("label", "win-fusion-test"));
         r.append(DataField::from_digit("value", 7));
         let mut m = WindowRowsTotal::new();
-        m.window_name = "win-1".into();
+        m.window_name = "win-fusion-test".into();
         let labels = m.values();
         WINDOW_ROWS_TOTAL.with_label_values(&labels).set(0.0);
         exporter.sink_record(&r).await.unwrap();
