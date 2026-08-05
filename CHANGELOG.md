@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-07-12
+
+### Fixed
+
+- `wp-model-core` 0.9.0 兼容：`data_type_to_arrow` 新增 `_ => ArrowType::Utf8` 覆盖 `BigInt` 等新变体
+- `wp-model-core` 0.9.0 兼容：`JsonFieldValue::serialize` 新增 `BigUint` 序列化为字符串（修复数据丢失）
+
 ## [0.17.0] - 2026-06-26
 
 ### Changed
@@ -256,7 +263,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/wp-labs/wp-connectors/compare/v0.17.0...v0.19.0
 [0.17.0]: https://github.com/wp-labs/wp-connectors/compare/v0.15.8...v0.17.0
 [0.15.8]: https://github.com/wp-labs/wp-connectors/compare/v0.15.6...v0.15.8
 [0.15.6]: https://github.com/wp-labs/wp-connectors/compare/v0.15.5...v0.15.6

@@ -12,9 +12,9 @@ use arrow::array::{
 use arrow::datatypes::{DataType as ArrowType, Field, Schema, TimeUnit};
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
-use wp_model_core::model::DataRecord;
 use wp_model_core::model::types::meta::DataType;
 use wp_model_core::model::types::value::Value;
+use wp_model_core::model::DataRecord;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -141,6 +141,7 @@ fn data_type_to_arrow(dt: &DataType) -> ArrowType {
         DataType::Ignore => ArrowType::Utf8,
         // Nested types → Utf8 (JSON representation)
         DataType::Obj | DataType::Array(_) | DataType::KvArr => ArrowType::Utf8,
+        _ => ArrowType::Utf8,
     }
 }
 

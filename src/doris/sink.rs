@@ -640,6 +640,7 @@ impl Serialize for JsonFieldValue<'_> {
                 seq.end()
             }
             Value::Symbol(v) => serializer.serialize_str(v),
+            Value::BigUint(v) => serializer.serialize_str(&v.to_string()),
             Value::Ignore(_) => serializer.serialize_none(),
         }
     }
