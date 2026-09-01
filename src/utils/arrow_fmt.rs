@@ -12,9 +12,9 @@ use arrow::array::{
 use arrow::datatypes::{DataType as ArrowType, Field, Schema, TimeUnit};
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
+use wp_model_core::model::DataRecord;
 use wp_model_core::model::types::meta::DataType;
 use wp_model_core::model::types::value::Value;
-use wp_model_core::model::DataRecord;
 
 // ---------------------------------------------------------------------------
 // Public API

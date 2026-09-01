@@ -8,7 +8,7 @@ use std::sync::Arc;
 use sysinfo::System;
 use tokio::{sync::oneshot, task::JoinHandle};
 use wp_connector_api::{SinkReason, SinkResult};
-use wp_log::{error_data, info_data};
+use wp_log::{debug_data, error_data, info_data};
 use wp_model_core::model::{DataRecord, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
@@ -24,6 +24,8 @@ enum Stage {
     Alert,
     Event,
     Evictor,
+    /// wfusion runtime 的分配器统计阶段。
+    Alloc,
 }
 
 use crate::victoriametrics::wfusion_metrics::{
@@ -228,10 +230,10 @@ impl wp_connector_api::AsyncRecordSink for VictoriaMetricExporter {
                     Stage::Event => {
                         event_e2e_latency_second_p99_stat(data);
                     }
-                    Stage::Evictor => {}
+                    Stage::Evictor | Stage::Alloc => {}
                 },
                 Err(_) => {
-                    error_data!("Invalid stage value: {}", field);
+                    debug_data!("Invalid stage value: {}", field);
                 }
             }
         }
@@ -307,12 +309,13 @@ mod tests {
     fn stage_parse_all_variants_and_reject_invalid() {
         let cases = &[
             "Pick", "Parse", "Sink", "Receiver", "Router", "Window", "Rule", "Alert", "Event",
-            "Evictor",
+            "Evictor", "Alloc",
         ];
         for &s in cases {
             assert!(s.parse::<Stage>().is_ok(), "stage '{}' should parse", s);
         }
         assert!("pick".parse::<Stage>().is_ok());
+        assert!("alloc".parse::<Stage>().is_ok());
         assert!("Unknown".parse::<Stage>().is_err());
     }
 
