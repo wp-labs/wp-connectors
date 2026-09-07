@@ -59,12 +59,13 @@ pub struct KafkaSource {
     key: String,
     tags: Tags,
     consumer: StreamConsumer<KafkaContext>,
+    /// 单个 `SourceBatch` 最大事件数（`0` = 不限条数，默认按字节凑批）。
+    batch_size: usize,
+    /// 凑批时单次读取的最长等待毫秒数（`0` = 不等待，逐条返回）。
+    batch_timeout_ms: u64,
+    /// 单个 `SourceBatch` 最大字节数（`0` = 不限字节，只按条数凑批）。
+    batch_max_bytes: usize,
 }
-
-/// 批量接收默认值：单个 `SourceBatch` 的最大消息数。
-const KAFKA_SOURCE_BATCH_SIZE: usize = 512;
-/// 批量接收默认值：凑批时单次读取的最长等待毫秒数。
-const KAFKA_SOURCE_BATCH_TIMEOUT_MS: u64 = 1;
 
 /// 把一条 Kafka 消息转成 `SourceEvent`，并把 topic 记录到 `WP_SRC_VAL` 标签。
 fn event_from_message(key: &str, tags: &Tags, topic: &str, payload: Option<&[u8]>) -> SourceEvent {
@@ -135,19 +136,28 @@ impl KafkaSource {
             key,
             consumer,
             tags,
+            batch_size: config.batch_size, // 0 = 不限条数
+            batch_timeout_ms: config.batch_timeout_ms,
+            batch_max_bytes: config.batch_max_bytes,
         })
     }
 
     /// 批量接收：
     /// 1. 为空就等待 —— 阻塞等待第一条消息（空闲时不空转、不加额外延迟）；
-    /// 2. 读到就继续 —— 收满 `KAFKA_SOURCE_BATCH_SIZE` 前持续读取；
-    /// 3. 读不到就结束 —— 单次读取等待超过 `KAFKA_SOURCE_BATCH_TIMEOUT_MS`
+    /// 2. 读到就继续 —— 达到任一上限（条数/字节/时间）前持续读取；
+    /// 3. 读不到就结束 —— 单次读取等待超过 `batch_timeout_ms`
     ///    （或队列暂无数据 / EOF / 其它消费错误）即返回已收消息。
+    ///
+    /// 上限语义：`batch_size`（`0` = 不限条数）与 `batch_max_bytes`
+    /// （`0` = 不限字节）谁先到达谁触发返回；默认 `batch_size = 0`，即按字节
+    /// 凑批（小事件自动多装、大事件天然少装），显式设置条数可限制派发量子。
     ///
     /// 只有一条消息都没收到时才会返回错误（保留原有 `NotData` 等语义），
     /// 凑批过程中的错误会顺延到下一次调用再暴露，避免丢弃已 poll 的消息。
     pub async fn recv_impl(&mut self) -> SourceResult<SourceBatch> {
-        let mut events: Vec<SourceEvent> = Vec::with_capacity(KAFKA_SOURCE_BATCH_SIZE);
+        let mut events: Vec<SourceEvent> =
+            Vec::with_capacity(batch_capacity_hint(self.batch_size, self.batch_max_bytes));
+        let mut batch_bytes = 0usize;
 
         let msg = self
             .consumer
@@ -155,6 +165,7 @@ impl KafkaSource {
             .await
             .map_err(KafkaErrorWrapper)
             .source_raw_err(SourceReason::SupplierError, "kafka".to_string())?;
+        batch_bytes += msg.payload().map_or(0, |p| p.len());
         events.push(event_from_message(
             &self.key,
             &self.tags,
@@ -162,25 +173,64 @@ impl KafkaSource {
             msg.payload(),
         ));
 
-        let wait = Duration::from_millis(KAFKA_SOURCE_BATCH_TIMEOUT_MS);
-        while events.len() < KAFKA_SOURCE_BATCH_SIZE {
-            match timeout(wait, self.consumer.recv()).await {
-                // 窗口内读到下一条 → 继续凑批。
-                Ok(Ok(msg)) => {
-                    events.push(event_from_message(
-                        &self.key,
-                        &self.tags,
-                        msg.topic(),
-                        msg.payload(),
-                    ));
+        // batch_timeout_ms == 0：不额外等待，退化为逐条返回（旧行为）。
+        if self.batch_timeout_ms > 0 {
+            let wait = Duration::from_millis(self.batch_timeout_ms);
+            while batch_caps_open(
+                self.batch_size,
+                self.batch_max_bytes,
+                events.len(),
+                batch_bytes,
+            ) {
+                match timeout(wait, self.consumer.recv()).await {
+                    // 窗口内读到下一条 → 继续凑批。
+                    Ok(Ok(msg)) => {
+                        batch_bytes += msg.payload().map_or(0, |p| p.len());
+                        events.push(event_from_message(
+                            &self.key,
+                            &self.tags,
+                            msg.topic(),
+                            msg.payload(),
+                        ));
+                    }
+                    // 读不到（超时 / 无数据 / EOF / 消费错误）→ 结束本批。
+                    Ok(Err(_)) | Err(_) => break,
                 }
-                // 读不到（超时 / 无数据 / EOF / 消费错误）→ 结束本批。
-                Ok(Err(_)) | Err(_) => break,
             }
         }
 
         Ok(events)
     }
+}
+
+/// 是否还能继续凑批：条数上限（`batch_size`=`0` 表示不限）与字节上限
+/// （`batch_max_bytes`=`0` 表示不限）都未触发。
+#[inline]
+fn batch_caps_open(
+    batch_size: usize,
+    batch_max_bytes: usize,
+    event_cnt: usize,
+    batch_bytes: usize,
+) -> bool {
+    (batch_size == 0 || event_cnt < batch_size)
+        && (batch_max_bytes == 0 || batch_bytes < batch_max_bytes)
+}
+
+/// `Vec` 预分配容量估算（仅影响分配，不影响语义）：取两个上限的保守最小值，
+/// 避免 `batch_size` 设得很大且按字节先触发时过度预分配。
+#[inline]
+fn batch_capacity_hint(batch_size: usize, batch_max_bytes: usize) -> usize {
+    let by_bytes = if batch_max_bytes > 0 {
+        (batch_max_bytes / 512).clamp(64, 8192)
+    } else {
+        8192
+    };
+    let by_count = if batch_size > 0 {
+        batch_size
+    } else {
+        usize::MAX
+    };
+    by_bytes.min(by_count)
 }
 
 async fn create_topics(config: &KafkaSourceConf) -> SourceResult<()> {
@@ -565,5 +615,52 @@ mod tests {
         let a = event_from_message("k1", &tags, "t", Some(b"1"));
         let b = event_from_message("k1", &tags, "t", Some(b"2"));
         assert_ne!(a.event_id, b.event_id);
+    }
+
+    // -- batch caps semantics (pure) --------------------------------------
+
+    #[test]
+    fn batch_caps_open_default_limits_by_bytes_only() {
+        // 默认 batch_size=0（不限条数），batch_max_bytes 决定何时关闭。
+        assert!(batch_caps_open(0, 256 * 1024, 0, 0));
+        assert!(batch_caps_open(0, 256 * 1024, 1700, 200 * 1024));
+        assert!(!batch_caps_open(0, 256 * 1024, 1700, 256 * 1024));
+        assert!(!batch_caps_open(0, 256 * 1024, 1, 256 * 1024));
+    }
+
+    #[test]
+    fn batch_caps_open_count_limit_closes_at_size() {
+        assert!(batch_caps_open(512, 0, 0, 0));
+        assert!(batch_caps_open(512, 0, 511, 0));
+        assert!(!batch_caps_open(512, 0, 512, 0));
+    }
+
+    #[test]
+    fn batch_caps_open_whichever_limit_first() {
+        // 小消息：条数先到（150B × 512 < 256KiB）
+        assert!(!batch_caps_open(512, 256 * 1024, 512, 512 * 150));
+        assert!(batch_caps_open(512, 256 * 1024, 128, 128 * 150));
+        // 大消息：字节先到（128 × 2KiB > 256KiB）
+        assert!(!batch_caps_open(512, 256 * 1024, 128, 128 * 2048));
+    }
+
+    #[test]
+    fn batch_caps_open_no_limits_never_closes() {
+        // 全 0 组合由 conf 校验拒绝（timeout>0 时）；纯函数层面保持开放。
+        assert!(batch_caps_open(0, 0, 100_000, usize::MAX / 2));
+    }
+
+    #[test]
+    fn batch_capacity_hint_respects_both_limits() {
+        // 默认（0 条 / 256KiB）：按字节估算 ≈512。
+        assert_eq!(batch_capacity_hint(0, 256 * 1024), 512);
+        // 显式条数更小 → 取条数。
+        assert_eq!(batch_capacity_hint(128, 0), 128);
+        assert_eq!(batch_capacity_hint(128, 256 * 1024), 128);
+        // 只按字节 → 估算上限 8192。
+        assert_eq!(batch_capacity_hint(0, 0), 8192);
+        assert_eq!(batch_capacity_hint(0, 16 * 1024 * 1024), 8192);
+        // 大条数 + 默认字节 → 不按条数整体预分配。
+        assert_eq!(batch_capacity_hint(100_000, 256 * 1024), 512);
     }
 }

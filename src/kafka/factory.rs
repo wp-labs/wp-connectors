@@ -11,7 +11,10 @@ use wp_model_core::model::fmt_def::TextFmt;
 use crate::WP_SRC_VAL;
 use crate::kafka::{
     KafkaSink, KafkaSource,
-    config::{KafkaSinkConf, KafkaSourceConf},
+    config::{
+        KAFKA_SOURCE_BATCH_MAX_BYTES, KAFKA_SOURCE_BATCH_SIZE, KAFKA_SOURCE_BATCH_TIMEOUT_MS,
+        KafkaSinkConf, KafkaSourceConf, batch_limits_error,
+    },
 };
 use crate::utils::Protocol;
 use crate::utils::arrow_decode::WireFormat;
@@ -23,6 +26,12 @@ fn build_kafka_conf_from_spec(
     let topics = parse_topics(spec.params.get("topic"))?;
     let group_id = parse_required_string(spec.params.get("group_id"), "kafka.group_id")?;
     let config = parse_config(spec.params.get("config"))?;
+    let batch_size = parse_source_batch_size(spec.params.get("batch_size"))?;
+    let batch_timeout_ms = parse_source_batch_timeout_ms(spec.params.get("batch_timeout_ms"))?;
+    let batch_max_bytes = parse_source_batch_max_bytes(spec.params.get("batch_max_bytes"))?;
+    if let Some(detail) = batch_limits_error(batch_size, batch_timeout_ms, batch_max_bytes) {
+        return Err(SourceReason::other(detail));
+    }
 
     // Validate data_format up front so a typo is caught at validation time.
     WireFormat::parse_strict(spec.params.get("data_format").and_then(|v| v.as_str()))
@@ -35,6 +44,9 @@ fn build_kafka_conf_from_spec(
         config,
         //TODO: use spec.enable
         enable: true,
+        batch_size,
+        batch_timeout_ms,
+        batch_max_bytes,
     };
     Ok((conf, group_id))
 }
@@ -146,6 +158,52 @@ fn parse_config(value: Option<&Value>) -> SourceResult<Option<Vec<String>>> {
         Some(_) => Err(SourceReason::other(
             "kafka.config must be a string or array",
         )),
+    }
+}
+
+/// Parses the optional `batch_size` param (0 = 不限条数，默认按字节凑批).
+fn parse_source_batch_size(value: Option<&Value>) -> SourceResult<usize> {
+    match value {
+        None => Ok(KAFKA_SOURCE_BATCH_SIZE),
+        Some(v) => {
+            let Some(i) = v.as_i64() else {
+                return Err(SourceReason::other("kafka.batch_size must be an integer"));
+            };
+            usize::try_from(i).map_err(|_| SourceReason::other("kafka.batch_size must be >= 0"))
+        }
+    }
+}
+
+/// Parses the optional `batch_timeout_ms` param;
+/// defaults to [`KAFKA_SOURCE_BATCH_TIMEOUT_MS`].
+fn parse_source_batch_timeout_ms(value: Option<&Value>) -> SourceResult<u64> {
+    match value {
+        None => Ok(KAFKA_SOURCE_BATCH_TIMEOUT_MS),
+        Some(v) => {
+            let Some(i) = v.as_i64() else {
+                return Err(SourceReason::other(
+                    "kafka.batch_timeout_ms must be an integer",
+                ));
+            };
+            u64::try_from(i).map_err(|_| SourceReason::other("kafka.batch_timeout_ms must be >= 0"))
+        }
+    }
+}
+
+/// Parses the optional `batch_max_bytes` param;
+/// defaults to [`KAFKA_SOURCE_BATCH_MAX_BYTES`] (`0` = 不限字节，只按条数凑批).
+fn parse_source_batch_max_bytes(value: Option<&Value>) -> SourceResult<usize> {
+    match value {
+        None => Ok(KAFKA_SOURCE_BATCH_MAX_BYTES),
+        Some(v) => {
+            let Some(i) = v.as_i64() else {
+                return Err(SourceReason::other(
+                    "kafka.batch_max_bytes must be an integer",
+                ));
+            };
+            usize::try_from(i)
+                .map_err(|_| SourceReason::other("kafka.batch_max_bytes must be >= 0"))
+        }
     }
 }
 
@@ -325,10 +383,19 @@ impl SourceDefProvider for KafkaSourceFactory {
             id: "kafka_src".into(),
             kind: self.kind().into(),
             scope: ConnectorScope::Source,
-            allow_override: vec!["brokers", "topic", "group_id", "config", "data_format"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            allow_override: vec![
+                "brokers",
+                "topic",
+                "group_id",
+                "config",
+                "data_format",
+                "batch_size",
+                "batch_timeout_ms",
+                "batch_max_bytes",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
             default_params: kafka_source_defaults(),
             origin: Some("wp-connectors:kafka_source".into()),
         }
@@ -371,6 +438,15 @@ fn kafka_source_defaults() -> ParamMap {
         json!(["auto.offset.reset=latest", "enable.auto.commit=true"]),
     );
     params.insert("data_format".into(), json!("ndjson"));
+    params.insert("batch_size".into(), json!(KAFKA_SOURCE_BATCH_SIZE));
+    params.insert(
+        "batch_timeout_ms".into(),
+        json!(KAFKA_SOURCE_BATCH_TIMEOUT_MS),
+    );
+    params.insert(
+        "batch_max_bytes".into(),
+        json!(KAFKA_SOURCE_BATCH_MAX_BYTES),
+    );
     params
 }
 
@@ -606,6 +682,115 @@ mod tests {
         assert_eq!(
             def.default_params.get("data_format"),
             Some(&json!("ndjson"))
+        );
+    }
+
+    // -- kafka source batch receive params ------------------------------
+
+    fn minimal_source_spec() -> wp_connector_api::SourceSpec {
+        let mut params = BTreeMap::new();
+        params.insert("brokers".into(), json!("localhost:9092"));
+        params.insert("topic".into(), json!("topic_a"));
+        params.insert("group_id".into(), json!("group-a"));
+        build_source_spec(params)
+    }
+
+    #[test]
+    fn kafka_source_batch_params_default_when_missing() {
+        let (conf, _) = build_kafka_conf_from_spec(&minimal_source_spec()).expect("valid spec");
+        // 默认 batch_size = 0（不限条数），单批大小由 batch_max_bytes 控制。
+        assert_eq!(conf.batch_size, 0);
+        assert_eq!(conf.batch_timeout_ms, 1);
+        assert_eq!(conf.batch_max_bytes, 256 * 1024);
+    }
+
+    #[test]
+    fn kafka_source_parses_custom_batch_params() {
+        let mut spec = minimal_source_spec();
+        spec.params.insert("batch_size".into(), json!(1024));
+        spec.params.insert("batch_timeout_ms".into(), json!(25));
+        spec.params
+            .insert("batch_max_bytes".into(), json!(1024 * 1024));
+        let (conf, _) = build_kafka_conf_from_spec(&spec).expect("valid spec");
+        assert_eq!(conf.batch_size, 1024);
+        assert_eq!(conf.batch_timeout_ms, 25);
+        assert_eq!(conf.batch_max_bytes, 1024 * 1024);
+    }
+
+    #[test]
+    fn kafka_source_accepts_zero_for_all_batch_limits() {
+        let mut spec = minimal_source_spec();
+        spec.params.insert("batch_size".into(), json!(0));
+        spec.params.insert("batch_timeout_ms".into(), json!(0));
+        spec.params.insert("batch_max_bytes".into(), json!(0));
+        let (conf, _) = build_kafka_conf_from_spec(&spec).expect("zero values allowed");
+        assert_eq!(conf.batch_size, 0);
+        assert_eq!(conf.batch_timeout_ms, 0);
+        assert_eq!(conf.batch_max_bytes, 0);
+    }
+
+    #[test]
+    fn kafka_source_rejects_unbounded_waiting_batch() {
+        // batch_size=0 且 batch_max_bytes=0 且 batch_timeout_ms>0 → 拒绝（批无大小上限）。
+        let mut spec = minimal_source_spec();
+        spec.params.insert("batch_size".into(), json!(0));
+        spec.params.insert("batch_max_bytes".into(), json!(0));
+        spec.params.insert("batch_timeout_ms".into(), json!(5));
+        let err = build_kafka_conf_from_spec(&spec).expect_err("unbounded batch rejected");
+        assert!(err.to_string().contains("batch"));
+        assert!(KafkaSourceFactory.validate_spec(&spec).is_err());
+    }
+
+    #[test]
+    fn kafka_source_rejects_negative_values() {
+        let mut spec = minimal_source_spec();
+        spec.params.insert("batch_size".into(), json!(-3));
+        let err = build_kafka_conf_from_spec(&spec).expect_err("batch_size negative");
+        assert!(err.to_string().contains("batch_size"));
+
+        let mut spec = minimal_source_spec();
+        spec.params.insert("batch_timeout_ms".into(), json!(-1));
+        let err = build_kafka_conf_from_spec(&spec).expect_err("batch_timeout_ms negative");
+        assert!(err.to_string().contains("batch_timeout_ms"));
+
+        let mut spec = minimal_source_spec();
+        spec.params.insert("batch_max_bytes".into(), json!(-1));
+        let err = build_kafka_conf_from_spec(&spec).expect_err("batch_max_bytes negative");
+        assert!(err.to_string().contains("batch_max_bytes"));
+    }
+
+    #[test]
+    fn kafka_source_rejects_non_integer_batch_params() {
+        let mut spec = minimal_source_spec();
+        spec.params.insert("batch_size".into(), json!("512"));
+        let err = build_kafka_conf_from_spec(&spec).expect_err("batch_size must be an integer");
+        assert!(err.to_string().contains("batch_size"));
+
+        let mut spec = minimal_source_spec();
+        spec.params.insert("batch_timeout_ms".into(), json!(1.5));
+        let err =
+            build_kafka_conf_from_spec(&spec).expect_err("batch_timeout_ms must be an integer");
+        assert!(err.to_string().contains("batch_timeout_ms"));
+    }
+
+    #[test]
+    fn kafka_source_validate_spec_rejects_negative_batch_size() {
+        let mut spec = minimal_source_spec();
+        spec.params.insert("batch_size".into(), json!(-1));
+        assert!(KafkaSourceFactory.validate_spec(&spec).is_err());
+    }
+
+    #[test]
+    fn kafka_source_def_advertises_batch_params() {
+        let def = KafkaSourceFactory.source_def();
+        assert!(def.allow_override.contains(&"batch_size".to_string()));
+        assert!(def.allow_override.contains(&"batch_timeout_ms".to_string()));
+        assert!(def.allow_override.contains(&"batch_max_bytes".to_string()));
+        assert_eq!(def.default_params.get("batch_size"), Some(&json!(0)));
+        assert_eq!(def.default_params.get("batch_timeout_ms"), Some(&json!(1)));
+        assert_eq!(
+            def.default_params.get("batch_max_bytes"),
+            Some(&json!(256 * 1024))
         );
     }
 
