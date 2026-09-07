@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-09-01
+
+### Changed
+
+- WFusion 监控数据新增 stage 阶段支持
+
 ## [0.19.0] - 2026-07-12
 
 ### Fixed
@@ -263,7 +269,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.19.1...HEAD
+[0.19.1]: https://github.com/wp-labs/wp-connectors/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/wp-labs/wp-connectors/compare/v0.17.0...v0.19.0
 [0.17.0]: https://github.com/wp-labs/wp-connectors/compare/v0.15.8...v0.17.0
 [0.15.8]: https://github.com/wp-labs/wp-connectors/compare/v0.15.6...v0.15.8
