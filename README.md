@@ -13,13 +13,18 @@ A unified connector library for the wp-flow system, providing Source and Sink su
 |-----------|:------:|:----:|-------------|
 | Kafka | ✅ | ✅ | `kafka` (default) |
 | MySQL | ✅ | ✅ | `mysql` (default) |
+| PostgreSQL | ✅ | ✅ | `postgres` (default) |
 | Doris | - | ✅ | `doris` (default) |
-| HTTP | - | ✅ | `http` |
-| Elasticsearch | - | ✅ | `elasticsearch` (placeholder) |
-| ClickHouse | - | ✅ | `clickhouse` (placeholder) |
+| HTTP | ✅ | ✅ | `http` |
+| Elasticsearch | - | ✅ | `elasticsearch` (default) |
+| ClickHouse | - | ✅ | `clickhouse` (default) |
 | Prometheus | - | Exporter | `prometheus` (default) |
 | VictoriaMetrics | - | Exporter | `victoriametrics` (default) |
 | VictoriaLogs | - | ✅ | `victorialogs` (default) |
+| UDP | - | ✅ | `udp` (default) |
+| count | ✅ | ✅ | `count` (default，计数 / 测试用) |
+
+> `dmdb`（达梦，ODBC）位于 [`wp-connectors-labs`](../wp-connectors-labs)，实验性，未进默认特性。
 
 ## Quick Start
 
@@ -56,15 +61,20 @@ cargo clippy --all-targets -- -D warnings
 
 | Feature | Description | Default |
 |---------|-------------|:-------:|
-| `kafka` | Kafka Source/Sink | ✅ |
-| `mysql` | MySQL Source/Sink | ✅ |
+| `kafka` | Kafka Source / Sink | ✅ |
+| `mysql` | MySQL Source / Sink | ✅ |
+| `postgres` | PostgreSQL Source / Sink | ✅ |
 | `doris` | Doris Sink (HTTP Stream Load) | ✅ |
-| `http` | HTTP/HTTPS Sink | - |
+| `http` | HTTP/HTTPS Source / Sink | - |
 | `prometheus` | Prometheus Exporter (actix-web) | ✅ |
 | `victoriametrics` | VictoriaMetrics Exporter | ✅ |
 | `victorialogs` | VictoriaLogs Sink | ✅ |
-| `elasticsearch` | Elasticsearch Sink (placeholder) | - |
-| `clickhouse` | ClickHouse Sink (placeholder) | - |
+| `elasticsearch` | Elasticsearch Sink (Bulk API) | ✅ |
+| `clickhouse` | ClickHouse Sink | ✅ |
+| `udp` | UDP Sink | ✅ |
+| `count` | Count Source / Sink（计数 / 测试用） | ✅ |
+| `external_integration` | 集成测试门控（需真实实例） | - |
+| `external_performance` | 性能测试门控（需真实实例） | - |
 | `full` | Enable all features | - |
 
 ## Arrow / warp-fusion Integration
@@ -138,8 +148,8 @@ src/
 ├── kafka/                 # Kafka Source/Sink
 ├── mysql/                 # MySQL Source/Sink
 ├── doris/                 # Doris Sink
-├── elasticsearch/         # Elasticsearch Sink (placeholder)
-├── clickhouse/            # ClickHouse Sink (placeholder)
+├── elasticsearch/         # Elasticsearch Sink (Bulk API)
+├── clickhouse/            # ClickHouse Sink
 ├── prometheus/            # Prometheus Exporter
 ├── victoriametrics/       # VictoriaMetrics Exporter
 └── victorialogs/          # VictoriaLogs Sink
