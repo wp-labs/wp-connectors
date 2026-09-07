@@ -5,8 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.20.0] - 2026-09-07（聚合 0.19.0 / 0.19.1）
-
+## [0.20.0] - 2026-09-07
 ### Added
 
 - Kafka Source 批量接收参数可配置：
@@ -25,12 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   —— 默认 `batch_size = 0`（不限条数）+ `batch_max_bytes = 256KiB`，小事件自动多装、
   大事件按字节控制单批内存；需要固定派发量子时显式设置 `batch_size`。
   纯字节/纯条数/组合上限均可通过参数组合表达。
+<<<<<<< HEAD
 - WFusion 监控数据新增 stage 阶段支持
 
+=======
+
+## [0.19.x] - 2026-07-12 ~ 2026-09-01
+
+>>>>>>> 1d8ab2468745f6c409206771c96803db7fefb050
 ### Fixed
 
 - `wp-model-core` 0.9.0 兼容：`data_type_to_arrow` 新增 `_ => ArrowType::Utf8` 覆盖 `BigInt` 等新变体
 - `wp-model-core` 0.9.0 兼容：`JsonFieldValue::serialize` 新增 `BigUint` 序列化为字符串（修复数据丢失）
+
+### Changed
+
+- WFusion 监控数据新增 stage 阶段支持
 
 ## [0.17.0] - 2026-06-26
 
