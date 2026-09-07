@@ -10,6 +10,8 @@ use rdkafka_wrap::statistics::Statistics;
 use rdkafka_wrap::types::RDKafkaErrorCode;
 use rdkafka_wrap::{ClientConfig, Message};
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
+use tokio::time::timeout;
 use wp_model_core::event_id::next_wp_event_id;
 use wp_model_core::raw::RawData;
 
@@ -57,6 +59,23 @@ pub struct KafkaSource {
     key: String,
     tags: Tags,
     consumer: StreamConsumer<KafkaContext>,
+}
+
+/// 批量接收默认值：单个 `SourceBatch` 的最大消息数。
+const KAFKA_SOURCE_BATCH_SIZE: usize = 512;
+/// 批量接收默认值：凑批时单次读取的最长等待毫秒数。
+const KAFKA_SOURCE_BATCH_TIMEOUT_MS: u64 = 1;
+
+/// 把一条 Kafka 消息转成 `SourceEvent`，并把 topic 记录到 `WP_SRC_VAL` 标签。
+fn event_from_message(key: &str, tags: &Tags, topic: &str, payload: Option<&[u8]>) -> SourceEvent {
+    let mut stags = tags.clone();
+    stags.set(WP_SRC_VAL, topic);
+    SourceEvent::new(
+        next_wp_event_id(),
+        key.to_string(),
+        RawData::Bytes(Bytes::copy_from_slice(payload.unwrap_or(&[]))),
+        stags.into(),
+    )
 }
 
 impl KafkaSource {
@@ -119,23 +138,48 @@ impl KafkaSource {
         })
     }
 
+    /// 批量接收：
+    /// 1. 为空就等待 —— 阻塞等待第一条消息（空闲时不空转、不加额外延迟）；
+    /// 2. 读到就继续 —— 收满 `KAFKA_SOURCE_BATCH_SIZE` 前持续读取；
+    /// 3. 读不到就结束 —— 单次读取等待超过 `KAFKA_SOURCE_BATCH_TIMEOUT_MS`
+    ///    （或队列暂无数据 / EOF / 其它消费错误）即返回已收消息。
+    ///
+    /// 只有一条消息都没收到时才会返回错误（保留原有 `NotData` 等语义），
+    /// 凑批过程中的错误会顺延到下一次调用再暴露，避免丢弃已 poll 的消息。
     pub async fn recv_impl(&mut self) -> SourceResult<SourceBatch> {
-        self.consumer
+        let mut events: Vec<SourceEvent> = Vec::with_capacity(KAFKA_SOURCE_BATCH_SIZE);
+
+        let msg = self
+            .consumer
             .recv()
             .await
-            .map(|msg| {
-                let payload = Bytes::copy_from_slice(msg.payload().unwrap_or(&[]));
-                let mut stags = self.tags.clone();
-                stags.set(WP_SRC_VAL, msg.topic().to_string());
-                vec![SourceEvent::new(
-                    next_wp_event_id(),
-                    self.key.clone(),
-                    RawData::Bytes(payload),
-                    stags.into(),
-                )]
-            })
             .map_err(KafkaErrorWrapper)
-            .source_raw_err(SourceReason::SupplierError, "kafka".to_string())
+            .source_raw_err(SourceReason::SupplierError, "kafka".to_string())?;
+        events.push(event_from_message(
+            &self.key,
+            &self.tags,
+            msg.topic(),
+            msg.payload(),
+        ));
+
+        let wait = Duration::from_millis(KAFKA_SOURCE_BATCH_TIMEOUT_MS);
+        while events.len() < KAFKA_SOURCE_BATCH_SIZE {
+            match timeout(wait, self.consumer.recv()).await {
+                // 窗口内读到下一条 → 继续凑批。
+                Ok(Ok(msg)) => {
+                    events.push(event_from_message(
+                        &self.key,
+                        &self.tags,
+                        msg.topic(),
+                        msg.payload(),
+                    ));
+                }
+                // 读不到（超时 / 无数据 / EOF / 消费错误）→ 结束本批。
+                Ok(Err(_)) | Err(_) => break,
+            }
+        }
+
+        Ok(events)
     }
 }
 
@@ -486,5 +530,40 @@ mod wf_impl {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_from_message_uses_topic_tag_and_copies_payload() {
+        let mut tags = Tags::new();
+        tags.set("custom", "v");
+        let ev = event_from_message("k1", &tags, "orders", Some(b"hello"));
+        assert_eq!(ev.tags.get(WP_SRC_VAL), Some("orders"));
+        assert_eq!(ev.tags.get("custom"), Some("v"));
+        match &ev.payload {
+            RawData::Bytes(bytes) => assert_eq!(bytes.as_ref(), b"hello"),
+            _ => panic!("expected RawData::Bytes payload"),
+        }
+    }
+
+    #[test]
+    fn event_from_message_none_payload_produces_empty_bytes() {
+        let ev = event_from_message("k1", &Tags::new(), "t", None);
+        match &ev.payload {
+            RawData::Bytes(bytes) => assert!(bytes.is_empty()),
+            _ => panic!("expected RawData::Bytes payload"),
+        }
+    }
+
+    #[test]
+    fn event_from_message_event_ids_are_unique() {
+        let tags = Tags::new();
+        let a = event_from_message("k1", &tags, "t", Some(b"1"));
+        let b = event_from_message("k1", &tags, "t", Some(b"2"));
+        assert_ne!(a.event_id, b.event_id);
     }
 }
