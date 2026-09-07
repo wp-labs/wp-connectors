@@ -5,20 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.20.0] - 2026-09-07
 
-## [0.19.1] - 2026-09-01
+### Added
+
+- Kafka Source 批量接收参数可配置：
+  - `batch_max_bytes`（默认 256KiB，主参）：单个 `SourceBatch` 最大字节数，`0` = 不限；
+  - `batch_size`（默认 0 = 不限条数）：显式设 ≥1 时按条数限制，与字节上限谁先到谁触发
+    （防止极小消息把单批事件数/派发量子撑得过大）；
+  - `batch_timeout_ms`（默认 1，≥0）：凑批时单次读取最长等待，`0` = 不等待（逐条返回）；
+    `batch_size` 与 `batch_max_bytes` 同时为 `0` 且 `batch_timeout_ms > 0` 时报错（批无大小上限）。
+  - `recv_impl` 先阻塞等待第一条（空闲不加延迟），随后在读取窗口内持续凑批，
+    到达任一上限即作为一个 `SourceBatch` 交给上层；凑批错误顺延下一轮暴露、
+    不丢已 poll 消息、partition 内顺序不变（关联 warp-parse#356）。
 
 ### Changed
 
-- WFusion 监控数据新增 stage 阶段支持
+- Kafka Source 批量默认行为调整：由固定 `512 条 / 1ms`（上一版实现）改为**按字节凑批**
+  —— 默认 `batch_size = 0`（不限条数）+ `batch_max_bytes = 256KiB`，小事件自动多装、
+  大事件按字节控制单批内存；需要固定派发量子时显式设置 `batch_size`。
+  纯字节/纯条数/组合上限均可通过参数组合表达。
 
-## [0.19.0] - 2026-07-12
+## [0.19.x] - 2026-07-12 ~ 2026-09-01
 
 ### Fixed
 
 - `wp-model-core` 0.9.0 兼容：`data_type_to_arrow` 新增 `_ => ArrowType::Utf8` 覆盖 `BigInt` 等新变体
 - `wp-model-core` 0.9.0 兼容：`JsonFieldValue::serialize` 新增 `BigUint` 序列化为字符串（修复数据丢失）
+
+### Changed
+
+- WFusion 监控数据新增 stage 阶段支持
 
 ## [0.17.0] - 2026-06-26
 
