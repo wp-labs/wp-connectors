@@ -13,15 +13,15 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
 # WP Core Dependencies
-wp-connector-api = "0.12"
-wp-connector-utils = "0.2"
-wp-parse-api =  "0.11"
-wp-model-core = "0.9"
+wp-connector-api = "0.13"
+wp-connector-utils = "0.3"
+wp-parse-api =  "0.12"
+wp-model-core = "0.10"
 wp-log =  "0.4"
-wp-error =  "0.11"
-wp-specs =  "0.11"
-wp-conf-base = "0.5"
-wp-data-fmt = "0.9"
+wp-error =  "0.12"
+wp-specs =  "0.12"
+wp-conf-base = "0.6"
+wp-data-fmt = "0.10"
 
 orion_exp = "0.1"
 orion-error = "0.8"
@@ -41,8 +41,8 @@ winnow = "1.0"
 educe = { version = "0.7", default-features = false, features = ["Debug", "Default"] }
 sea-orm = { version = "1.1", default-features = false, features = ["sqlx-mysql", "sqlx-postgres", "runtime-tokio-rustls"] }
 sqlx = { version = "0.9", default-features = false, features = ["mysql", "runtime-tokio", "tls-native-tls"]  }
-arrow = "59"
-wf-connector-api = "0.2"
+arrow = "60"
+wf-connector-api = "0.3"
 
 # Optional Feature Dependencies
 actix-web = { version = "4.12", default-features = false, features = ["macros"] }
