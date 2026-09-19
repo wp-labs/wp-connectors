@@ -1,9 +1,10 @@
 # wp-connectors
 
-![License](https://img.shields.io/badge/License-Apache%202.0-blue)
-[![CI](https://github.com/wp-labs/wp-connectors/actions/workflows/ci.yml/badge.svg)](https://github.com/wp-labs/wp-connectors/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/wp-labs/wp-connectors/branch/main/graph/badge.svg)](https://codecov.io/gh/wp-labs/wp-connectors)
-![Rust](https://img.shields.io/badge/rust-stable%2Bbeta-orange)
+[![release](https://img.shields.io/github/v/tag/wp-labs/wp-connectors?include_prereleases&label=release&color=orange)](https://github.com/wp-labs/wp-connectors/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/wp-labs/wp-connectors/ci.yml?branch=main)](https://github.com/wp-labs/wp-connectors/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/wp-labs/wp-connectors/graph/badge.svg?token=6SVCXBHB6B)](https://codecov.io/gh/wp-labs/wp-connectors)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Rust Edition](https://img.shields.io/badge/edition-2024-orange.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
 
 A unified connector library for the wp-flow system, providing Source and Sink support for multiple data systems.
 
@@ -11,20 +12,22 @@ A unified connector library for the wp-flow system, providing Source and Sink su
 
 | Connector | Source | Sink | Feature Flag |
 |-----------|:------:|:----:|-------------|
-| Kafka | ✅ | ✅ | `kafka` (default) |
-| MySQL | ✅ | ✅ | `mysql` (default) |
-| PostgreSQL | ✅ | ✅ | `postgres` (default) |
-| Doris | - | ✅ | `doris` (default) |
+| Kafka | ✅ | ✅ | `kafka` |
+| MySQL | ✅ | ✅ | `mysql` |
+| PostgreSQL | ✅ | ✅ | `postgres` |
 | HTTP | ✅ | ✅ | `http` |
-| Elasticsearch | - | ✅ | `elasticsearch` (default) |
-| ClickHouse | - | ✅ | `clickhouse` (default) |
-| Prometheus | - | Exporter | `prometheus` (default) |
-| VictoriaMetrics | - | Exporter | `victoriametrics` (default) |
-| VictoriaLogs | - | ✅ | `victorialogs` (default) |
-| UDP | - | ✅ | `udp` (default) |
-| count | ✅ | ✅ | `count` (default，计数 / 测试用) |
+| ClickHouse | - | ✅ | `clickhouse` |
+| Doris | - | ✅ | `doris` |
+| Elasticsearch | - | ✅ | `elasticsearch` |
+| VictoriaLogs | - | ✅ | `victorialogs` |
+| UDP | - | ✅ | `udp` |
+| Prometheus | - | Exporter | `prometheus` |
+| VictoriaMetrics | - | Exporter | `victoriametrics` |
+| count | ✅ | ✅ | `count` (counting / testing) |
 
-> `dmdb`（达梦，ODBC）位于 [`wp-connectors-labs`](../wp-connectors-labs)，实验性，未进默认特性。
+> All 12 connector features are part of the `default` set; use `default-features = false` to pick them individually.
+> `Prometheus` / `VictoriaMetrics` register as sinks but are **metrics exporters** (no `sink.rs`; implemented in `exporter.rs`).
+> `dmdb` (Dameng, ODBC) lives in [`wp-connectors-labs`](../wp-connectors-labs); the `src/dmdb/` copy here is disabled (module and feature are commented out).
 
 ## Quick Start
 
@@ -64,18 +67,18 @@ cargo clippy --all-targets -- -D warnings
 | `kafka` | Kafka Source / Sink | ✅ |
 | `mysql` | MySQL Source / Sink | ✅ |
 | `postgres` | PostgreSQL Source / Sink | ✅ |
+| `http` | HTTP/HTTPS Source / Sink | ✅ |
+| `clickhouse` | ClickHouse Sink | ✅ |
 | `doris` | Doris Sink (HTTP Stream Load) | ✅ |
-| `http` | HTTP/HTTPS Source / Sink | - |
+| `elasticsearch` | Elasticsearch Sink (Bulk API) | ✅ |
+| `victorialogs` | VictoriaLogs Sink | ✅ |
+| `udp` | UDP Sink | ✅ |
 | `prometheus` | Prometheus Exporter (actix-web) | ✅ |
 | `victoriametrics` | VictoriaMetrics Exporter | ✅ |
-| `victorialogs` | VictoriaLogs Sink | ✅ |
-| `elasticsearch` | Elasticsearch Sink (Bulk API) | ✅ |
-| `clickhouse` | ClickHouse Sink | ✅ |
-| `udp` | UDP Sink | ✅ |
-| `count` | Count Source / Sink（计数 / 测试用） | ✅ |
-| `external_integration` | 集成测试门控（需真实实例） | - |
-| `external_performance` | 性能测试门控（需真实实例） | - |
-| `full` | Enable all features | - |
+| `count` | Count Source / Sink (counting / testing) | ✅ |
+| `external_integration` | Integration-test gate (requires real instances) | - |
+| `external_performance` | Performance-test gate (requires real instances) | - |
+| `full` | Enable all connector features (currently **excludes** `count` / `udp`) | - |
 
 ## Arrow / warp-fusion Integration
 
@@ -147,12 +150,18 @@ src/
 ├── lib.rs                 # Entry point, exports modules by feature
 ├── kafka/                 # Kafka Source/Sink
 ├── mysql/                 # MySQL Source/Sink
-├── doris/                 # Doris Sink
-├── elasticsearch/         # Elasticsearch Sink (Bulk API)
+├── postgres/              # PostgreSQL Source/Sink
+├── http/                  # HTTP/HTTPS Source/Sink
 ├── clickhouse/            # ClickHouse Sink
+├── doris/                 # Doris Sink (HTTP Stream Load)
+├── elasticsearch/         # Elasticsearch Sink (Bulk API)
+├── victorialogs/          # VictoriaLogs Sink
+├── udp/                   # UDP Sink
 ├── prometheus/            # Prometheus Exporter
 ├── victoriametrics/       # VictoriaMetrics Exporter
-└── victorialogs/          # VictoriaLogs Sink
+├── count/                 # Count Source/Sink (counting / testing)
+├── utils/                 # Shared helpers (Arrow decode/format, time stats)
+└── dmdb/                  # Dameng ODBC — disabled (module & feature commented out)
 tests/                     # Integration tests
 ```
 
@@ -209,15 +218,22 @@ wp-flow 系统的统一连接器库，提供多种数据源（Source）和数据
 
 | 连接器 | Source | Sink | Feature Flag |
 |--------|:------:|:----:|-------------|
-| Kafka | ✅ | ✅ | `kafka`（默认） |
-| MySQL | ✅ | ✅ | `mysql`（默认） |
-| Doris | - | ✅ | `doris`（默认） |
-| HTTP | - | ✅ | `http` |
-| Elasticsearch | - | ✅ | `elasticsearch`（占位） |
-| ClickHouse | - | ✅ | `clickhouse`（占位） |
-| Prometheus | - | 导出器 | `prometheus`（默认） |
-| VictoriaMetrics | - | 导出器 | `victoriametrics`（默认） |
-| VictoriaLogs | - | ✅ | `victorialogs`（默认） |
+| Kafka | ✅ | ✅ | `kafka` |
+| MySQL | ✅ | ✅ | `mysql` |
+| PostgreSQL | ✅ | ✅ | `postgres` |
+| HTTP | ✅ | ✅ | `http` |
+| ClickHouse | - | ✅ | `clickhouse` |
+| Doris | - | ✅ | `doris` |
+| Elasticsearch | - | ✅ | `elasticsearch` |
+| VictoriaLogs | - | ✅ | `victorialogs` |
+| UDP | - | ✅ | `udp` |
+| Prometheus | - | 导出器 | `prometheus` |
+| VictoriaMetrics | - | 导出器 | `victoriametrics` |
+| count | ✅ | ✅ | `count`（计数 / 测试用） |
+
+> 以上 12 个连接器特性**全部包含在 `default`** 中；用 `default-features = false` 可逐个启用。
+> `Prometheus` / `VictoriaMetrics` 注册为 Sink，但语义是**指标导出器**（无 `sink.rs`，实现于 `exporter.rs`）。
+> `dmdb`（达梦，ODBC）在 [`wp-connectors-labs`](../wp-connectors-labs)；本仓 `src/dmdb/` 已停用（模块与 feature 均被注释）。
 
 ## 快速开始
 
@@ -256,14 +272,19 @@ cargo clippy --all-targets -- -D warnings
 |---------|------|:----:|
 | `kafka` | Kafka Source/Sink | ✅ |
 | `mysql` | MySQL Source/Sink | ✅ |
+| `postgres` | PostgreSQL Source/Sink | ✅ |
+| `http` | HTTP/HTTPS Source/Sink | ✅ |
+| `clickhouse` | ClickHouse Sink | ✅ |
 | `doris` | Doris Sink（HTTP Stream Load） | ✅ |
-| `http` | HTTP/HTTPS Sink | - |
+| `elasticsearch` | Elasticsearch Sink（Bulk API） | ✅ |
+| `victorialogs` | VictoriaLogs Sink | ✅ |
+| `udp` | UDP Sink | ✅ |
 | `prometheus` | Prometheus 导出器（actix-web） | ✅ |
 | `victoriametrics` | VictoriaMetrics 导出器 | ✅ |
-| `victorialogs` | VictoriaLogs Sink | ✅ |
-| `elasticsearch` | Elasticsearch Sink（占位） | - |
-| `clickhouse` | ClickHouse Sink（占位） | - |
-| `full` | 启用全部特性 | - |
+| `count` | Count Source/Sink（计数 / 测试用） | ✅ |
+| `external_integration` | 集成测试门控（需真实实例） | - |
+| `external_performance` | 性能测试门控（需真实实例） | - |
+| `full` | 启用全部连接器特性（当前**不含** `count` / `udp`） | - |
 
 ## Arrow / warp-fusion 集成
 
@@ -327,12 +348,18 @@ src/
 ├── lib.rs                 # 入口，按 feature 导出各模块
 ├── kafka/                 # Kafka Source/Sink
 ├── mysql/                 # MySQL Source/Sink
-├── doris/                 # Doris Sink
-├── elasticsearch/         # Elasticsearch Sink（占位）
-├── clickhouse/            # ClickHouse Sink（占位）
+├── postgres/              # PostgreSQL Source/Sink
+├── http/                  # HTTP/HTTPS Source/Sink
+├── clickhouse/            # ClickHouse Sink
+├── doris/                 # Doris Sink（HTTP Stream Load）
+├── elasticsearch/         # Elasticsearch Sink（Bulk API）
+├── victorialogs/          # VictoriaLogs Sink
+├── udp/                   # UDP Sink
 ├── prometheus/            # Prometheus 导出器
 ├── victoriametrics/       # VictoriaMetrics 导出器
-└── victorialogs/          # VictoriaLogs Sink
+├── count/                 # Count Source/Sink（计数 / 测试用）
+├── utils/                 # 公共工具（Arrow 解码/格式化、时间统计）
+└── dmdb/                  # 达梦 ODBC —— 已停用（模块与 feature 均被注释）
 tests/                     # 集成测试
 ```
 
