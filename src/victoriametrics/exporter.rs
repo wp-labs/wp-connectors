@@ -342,7 +342,7 @@ mod tests {
         let mut pick_record = DataRecord::default();
         pick_record.append(DataField::from_chars("stage", "Pick"));
         pick_record.append(DataField::from_chars("target", pick_key));
-        pick_record.append(DataField::from_digit("total", 2));
+        pick_record.append(DataField::from_int("total", 2));
         pick_record.append(DataField::from_chars("wp_source_type", "kafka"));
         pick_record.append(DataField::from_chars("wp_access_ip", "127.0.0.1"));
         let (pick_values, _) = source_values(&pick_record);
@@ -357,8 +357,8 @@ mod tests {
         let mut parse_record = DataRecord::default();
         parse_record.append(DataField::from_chars("stage", "Parse"));
         parse_record.append(DataField::from_chars("target", parse_key));
-        parse_record.append(DataField::from_digit("success", 5));
-        parse_record.append(DataField::from_digit("total", 5));
+        parse_record.append(DataField::from_int("success", 5));
+        parse_record.append(DataField::from_int("total", 5));
         parse_record.append(DataField::from_chars("wp_package_name", "pkg-a"));
         parse_record.append(DataField::from_chars("wp_rule_name", parse_key));
         let (parse_values, _) = parse_all(&parse_record);
@@ -379,7 +379,7 @@ mod tests {
         sink_record_data.append(DataField::from_chars("sink_category", sink_category));
         sink_record_data.append(DataField::from_chars("sink_business", sink_business));
         sink_record_data.append(DataField::from_chars("log_business", log_business));
-        sink_record_data.append(DataField::from_digit("success", 1));
+        sink_record_data.append(DataField::from_int("success", 1));
         sink_record_data.append(DataField::from_chars("wp_sink_group", sink_business));
         sink_record_data.append(DataField::from_chars("wp_sink_name", sink_name));
         let (sink_values, _) = send_sink(&sink_record_data);
@@ -400,7 +400,7 @@ mod tests {
         r.append(DataField::from_chars("stage", "Receiver"));
         r.append(DataField::from_chars("name", "rows_total"));
         r.append(DataField::from_chars("label", "src-1"));
-        r.append(DataField::from_digit("value", 10));
+        r.append(DataField::from_int("value", 10));
         let mut m = ReceiveTotalMetrics::new();
         m.source_name = "src-1".into();
         let labels = m.values();
@@ -413,7 +413,7 @@ mod tests {
         r.append(DataField::from_chars("stage", "Router"));
         r.append(DataField::from_chars("name", "route_errors_total"));
         r.append(DataField::from_chars("label", "src-2"));
-        r.append(DataField::from_digit("value", 1));
+        r.append(DataField::from_int("value", 1));
         let mut m = RouteErrorsTotal::new();
         m.source_name = "src-2".into();
         let labels = m.values();
@@ -429,7 +429,7 @@ mod tests {
         r.append(DataField::from_chars("stage", "Window"));
         r.append(DataField::from_chars("name", "rows"));
         r.append(DataField::from_chars("label", "win-fusion-test"));
-        r.append(DataField::from_digit("value", 7));
+        r.append(DataField::from_int("value", 7));
         let mut m = WindowRowsTotal::new();
         m.window_name = "win-fusion-test".into();
         let labels = m.values();
@@ -442,7 +442,7 @@ mod tests {
         r.append(DataField::from_chars("stage", "Rule"));
         r.append(DataField::from_chars("name", "matches_total"));
         r.append(DataField::from_chars("label", "rule-1"));
-        r.append(DataField::from_digit("value", 3));
+        r.append(DataField::from_int("value", 3));
         let mut m = RuleMatchesTotal::new();
         m.rule_name = "rule-1".into();
         let labels = m.values();

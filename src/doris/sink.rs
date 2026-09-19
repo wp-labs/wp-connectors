@@ -598,7 +598,7 @@ impl Serialize for JsonFieldValue<'_> {
             Value::Bool(v) => serializer.serialize_bool(*v),
             Value::Chars(v) => serializer.serialize_str(v),
             Value::Float(v) => serializer.serialize_f64(*v),
-            Value::Digit(v) => serializer.serialize_i64(*v),
+            Value::Int(v) => serializer.serialize_i64(*v),
             Value::Time(v) => serializer.serialize_str(&v.to_string()),
             Value::IpNet(v) => serializer.serialize_str(&v.to_string()),
             Value::IpAddr(v) => serializer.serialize_str(&v.to_string()),
@@ -700,14 +700,14 @@ mod tests {
 
     fn sample_record() -> DataRecord {
         let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 1));
+        record.append(DataField::from_int("id", 1));
         record.append(DataField::from_chars("name", "alice"));
         record
     }
 
     fn sample_record_with_route(id: i64, tenant: &str, day: &str) -> DataRecord {
         let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", id));
+        record.append(DataField::from_int("id", id));
         record.append(DataField::from_chars("tenant", tenant));
         record.append(DataField::from_chars("day", day));
         record.append(DataField::from_chars("name", "alice"));
@@ -800,7 +800,7 @@ mod tests {
         sink.stop().await.unwrap();
 
         let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 1));
+        record.append(DataField::from_int("id", 1));
 
         let err = sink.sink_record(&record).await.unwrap_err();
         assert_eq!(err.reason(), &SinkReason::Sink);
@@ -819,7 +819,7 @@ mod tests {
         record.append(DataField::new(DataType::Bool, "enabled", Value::Bool(true)));
 
         let mut nested = ObjectValue::new();
-        nested.insert("count", DataField::from_digit("count", 7));
+        nested.insert("count", DataField::from_int("count", 7));
         nested.insert(
             "ignored",
             DataField::new(
@@ -1021,7 +1021,7 @@ mod tests {
             .await
             .unwrap();
         let mut record = DataRecord::default();
-        record.append(DataField::from_digit("tenant", 1));
+        record.append(DataField::from_int("tenant", 1));
 
         let err = sink.build_table_name(&record).unwrap_err();
 

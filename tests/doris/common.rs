@@ -111,7 +111,7 @@ pub fn create_doris_test_config() -> ParamMap {
 
 pub fn create_doris_test_record(id: i64, table_count: i64, prefix: &str) -> DataRecord {
     let mut record = DataRecord::default();
-    record.append(DataField::from_digit("wp_event_id", id));
+    record.append(DataField::from_int("wp_event_id", id));
     record.append(DataField::from_chars(
         "wp_src_key",
         format!("{prefix}_{id}"),
@@ -122,8 +122,8 @@ pub fn create_doris_test_record(id: i64, table_count: i64, prefix: &str) -> Data
         "http/request",
         format!("GET /api/{prefix}/{id} HTTP/1.1"),
     ));
-    record.append(DataField::from_digit("status", 200));
-    record.append(DataField::from_digit("size", 1024 + id));
+    record.append(DataField::from_int("status", 200));
+    record.append(DataField::from_int("size", 1024 + id));
     record.append(DataField::from_chars(
         "referer",
         dynamic_table_suffix(id, table_count),

@@ -367,7 +367,7 @@ mod tests {
         };
         let mut record = DataRecord::default();
         record.append(DataField::from_chars("name", "O'Reilly"));
-        record.append(DataField::from_digit("age", 42));
+        record.append(DataField::from_int("age", 42));
         record.append(DataField::from_ignore("unused"));
 
         let values = sink.format_values_row(&record);

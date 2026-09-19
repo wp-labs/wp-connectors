@@ -105,7 +105,7 @@ fn infer_schema(records: &[Arc<DataRecord>]) -> Result<Arc<Schema>, ArrowFmtErro
 fn data_type_to_arrow(dt: &DataType) -> ArrowType {
     match dt {
         DataType::Bool => ArrowType::Boolean,
-        DataType::Digit => ArrowType::Int64,
+        DataType::Int => ArrowType::Int64,
         DataType::Float => ArrowType::Float64,
         // Time → Timestamp(Nanosecond)
         DataType::Time
@@ -223,7 +223,7 @@ fn build_int32_col(
     let mut builder = Int32Builder::new();
     for rec in records {
         match field_value(rec, col_idx) {
-            Some(Value::Digit(d)) => builder.append_value(*d as i32),
+            Some(Value::Int(d)) => builder.append_value(*d as i32),
             Some(Value::Float(f)) => builder.append_value(*f as i32),
             Some(Value::Chars(s)) => {
                 if let Ok(v) = s.parse::<i32>() {
@@ -247,7 +247,7 @@ fn build_int64_col(
     let mut builder = Int64Builder::new();
     for rec in records {
         match field_value(rec, col_idx) {
-            Some(Value::Digit(d)) => builder.append_value(*d),
+            Some(Value::Int(d)) => builder.append_value(*d),
             Some(Value::Float(f)) => builder.append_value(*f as i64),
             Some(Value::Chars(s)) => {
                 if let Ok(v) = s.parse::<i64>() {
@@ -276,7 +276,7 @@ fn build_float64_col(
     for rec in records {
         match field_value(rec, col_idx) {
             Some(Value::Float(f)) => builder.append_value(*f),
-            Some(Value::Digit(d)) => builder.append_value(*d as f64),
+            Some(Value::Int(d)) => builder.append_value(*d as f64),
             Some(Value::Chars(s)) => {
                 if let Ok(v) = s.parse::<f64>() {
                     builder.append_value(v);
@@ -306,7 +306,7 @@ fn build_timestamp_ns_col(
                     builder.append_null();
                 }
             }
-            Some(Value::Digit(d)) => builder.append_value(*d * 1_000_000),
+            Some(Value::Int(d)) => builder.append_value(*d * 1_000_000),
             Some(Value::Chars(s)) => {
                 if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
                     if let Some(ns) = dt.timestamp_nanos_opt() {
@@ -419,7 +419,7 @@ mod tests {
     }
 
     fn digit_field(name: &str, val: i64) -> DataField {
-        DataField::from_digit(name, val)
+        DataField::from_int(name, val)
     }
 
     // -- Empty records ----------------------------------------------------
@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     fn digit_maps_to_int64() {
-        assert_eq!(data_type_to_arrow(&DataType::Digit), ArrowType::Int64);
+        assert_eq!(data_type_to_arrow(&DataType::Int), ArrowType::Int64);
     }
 
     #[test]
@@ -503,7 +503,7 @@ mod tests {
             DataType::Chars,
             DataType::Symbol,
             DataType::PeekSymbol,
-            DataType::Digit,
+            DataType::Int,
             DataType::Float,
             DataType::Ignore,
             DataType::Time,
@@ -781,7 +781,7 @@ mod tests {
 
     #[test]
     fn int32_col_from_digit() {
-        let recs = vec![make_record(vec![DataField::from_digit("port", 8080)])];
+        let recs = vec![make_record(vec![DataField::from_int("port", 8080)])];
         let schema = Arc::new(Schema::new(vec![Field::new(
             "port",
             ArrowType::Int32,
@@ -817,7 +817,7 @@ mod tests {
 
     #[test]
     fn ignore_not_in_schema() {
-        let recs = vec![make_record(vec![DataField::from_digit("count", 1)])];
+        let recs = vec![make_record(vec![DataField::from_int("count", 1)])];
         let schema = infer_schema(&recs).unwrap();
         assert_eq!(schema.fields().len(), 1);
         assert!(schema.fields().iter().any(|f| f.name() == "count"));

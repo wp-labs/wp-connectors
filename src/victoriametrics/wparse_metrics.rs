@@ -71,7 +71,7 @@ pub(crate) fn source_values(data: &DataRecord) -> (RecvMetrics, i64) {
     if let Some(Value::Chars(f)) = data.get2("wp_access_ip").map(|x| x.get_value()) {
         recv_metrics.source_name = f.to_string();
     }
-    if let Some(Value::Digit(f)) = data.get2("total").map(|x| x.get_value()) {
+    if let Some(Value::Int(f)) = data.get2("total").map(|x| x.get_value()) {
         count = *f;
     }
     (recv_metrics, count)
@@ -86,7 +86,7 @@ pub(crate) fn parse_all(data: &DataRecord) -> (ParseAllMetrics, u64) {
         parse_metrics.rule_name = f.to_string();
     }
     let mut count = 0;
-    if let Some(Value::Digit(total)) = data.get2("total").opt().get_value() {
+    if let Some(Value::Int(total)) = data.get2("total").opt().get_value() {
         count = *total
     }
     (parse_metrics, count as u64)
@@ -105,7 +105,7 @@ pub(crate) fn send_sink(data: &DataRecord) -> (SinkMetrics, u64) {
     }
     let mut count = 0;
     // sink_metrics.extend_metrics(data);
-    if let Some(Value::Digit(f)) = data.get2("success").opt().get_value() {
+    if let Some(Value::Int(f)) = data.get2("success").opt().get_value() {
         count = *f;
     }
     (sink_metrics, count as u64)
