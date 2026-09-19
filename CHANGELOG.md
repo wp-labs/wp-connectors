@@ -5,7 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-09-19
+
+### Changed
+
+- **破坏性依赖升级（消费方须一同升）**：`arrow` 59 → 60、`wf-connector-api` 0.2 → 0.3、`wp-connector-api` 0.12 → 0.13、`wp-connector-utils` 0.2 → 0.3、`wp-model-core` 0.9 → 0.10、`wp-parse-api` 0.11 → 0.12、`wp-error` 0.11 → 0.12、`wp-specs` 0.11 → 0.12、`wp-conf-base` 0.5 → 0.6、`wp-data-fmt` 0.9 → 0.10。
+  `arrow` 与 `wf-connector-api` 必须同时升：前者决定 `RecordBatch` 的类型身份，后者的
+  `BatchSource::receive_batch` 就落在这条 trait 签名上；漏升任一个都会出现「依赖图里两个
+  arrow 版本」或 trait 签名不匹配。升级后依赖图内 `arrow` 只剩一个版本。
+- **`wp-connector-test-utils` 改为 crates.io 版本依赖**：由 git tag `v0.2.4` 改为 `"0.3"`
+  （该版本已随 `wp-connector-api` 0.13 / `wp-model-core` 0.10 对齐）。
+- 跟进 `wp-model-core` 0.10 的整型正名：`DataField::from_digit` → `from_int`、
+  `Value::Digit` → `Value::Int`、`DataType::Digit` → `DataType::Int`（共 67 处；源码级改名，无行为变化）。
+
 ## [0.20.0] - 2026-09-07
+
 ### Added
 
 - Kafka Source 批量接收参数可配置：
@@ -24,14 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   —— 默认 `batch_size = 0`（不限条数）+ `batch_max_bytes = 256KiB`，小事件自动多装、
   大事件按字节控制单批内存；需要固定派发量子时显式设置 `batch_size`。
   纯字节/纯条数/组合上限均可通过参数组合表达。
-<<<<<<< HEAD
-- WFusion 监控数据新增 stage 阶段支持
-
-=======
 
 ## [0.19.x] - 2026-07-12 ~ 2026-09-01
 
->>>>>>> 1d8ab2468745f6c409206771c96803db7fefb050
 ### Fixed
 
 - `wp-model-core` 0.9.0 兼容：`data_type_to_arrow` 新增 `_ => ArrowType::Utf8` 覆盖 `BigInt` 等新变体
@@ -290,7 +299,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.19.1...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/wp-labs/wp-connectors/compare/v0.20.0...v0.21.0
 [0.19.1]: https://github.com/wp-labs/wp-connectors/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/wp-labs/wp-connectors/compare/v0.17.0...v0.19.0
 [0.17.0]: https://github.com/wp-labs/wp-connectors/compare/v0.15.8...v0.17.0
