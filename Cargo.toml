@@ -54,7 +54,7 @@ lazy_static = "1.5"
 uuid = { version = "1.19", features = ["v4"] }
 rand = "0.10"
 flate2 = "1.0"
-base64 = "0.22"
+base64 = "0.23"
 
 # Dev Dependencies
 env_logger = "0.11"
