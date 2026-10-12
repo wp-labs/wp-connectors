@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.1] - 2026-10-12
+
+### Fixed
+
+- **`wf-connector-api` 0.3 → 0.4**：`orion-error` 0.9 的对齐是以 `wf-connector-api 0.4` 发布的，本 crate 仍写 `^0.3`。与已升到 `^0.4` 的 `wp-core-connectors 0.10.1` / warp-fusion 同处一张依赖图时，会同时装入 `wf-connector-api` 的 0.3 与 0.4 两份，`SourceReason` / `StructError` 类型随之分裂。本次对齐到 `^0.4`。
+
 ## [0.23.0] - 2026-10-12
 
 ### Changed
