@@ -3,7 +3,7 @@ resolver = "2"
 members = ["."]  # 当前包作为workspace成员
 
 [workspace.package]
-version = "0.22.0" # @gxl:set(version)
+version = "0.23.0" # @gxl:set(version)
 edition = "2024"
 description = "Stable connectors for warp-parse supporting source and sink functionality"
 authors = ["WP Labs Team"]
@@ -19,7 +19,7 @@ wp-parse-api =  "0.13"
 wp-model-core = "0.10"
 wp-log =  "0.5"
 wp-error =  "0.13"
-wp-specs =  "0.12"
+wp-specs =  "0.13"
 wp-conf-base = "0.7"
 wp-data-fmt = "0.10"
 

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-10-12
+
+### Changed
+- **依赖 `wp-specs` 0.12 → 0.13**：随 `wp-specs` 0.13（其公开 `ParamMap` 升级到 `wp-connector-api` 0.14），消除依赖图中重复的 `wp-connector-api`。消费方须一同升级。
+
 ## [0.22.0] - 2026-10-12
 
 ### Changed
