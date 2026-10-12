@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-10-12
+
+### Changed
+- **升级到 orion-error 0.9 世代**：`orion-error` 0.8 → 0.9、`orion_conf` 0.7 → 0.8（公共 API 兼容）。
+- 依赖升级：`wp-connector-api` 0.13 → 0.14、`wp-connector-utils` 0.3 → 0.5、`wp-error` 0.12 → 0.13、`wp-conf-base` 0.6 → 0.7、`wp-log` 0.4 → 0.5。消费方须一同升级以避免跨版本类型冲突。
+
 ## [0.21.0] - 2026-09-19
 
 ### Changed

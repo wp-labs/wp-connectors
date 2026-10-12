@@ -6,5 +6,6 @@ Cargo.lock
 .idea
 .kiro
 .*
+!.github/
 .run
 temp

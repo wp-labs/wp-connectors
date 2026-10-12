@@ -3,7 +3,7 @@ resolver = "2"
 members = ["."]  # 当前包作为workspace成员
 
 [workspace.package]
-version = "0.21.0" # @gxl:set(version)
+version = "0.22.0" # @gxl:set(version)
 edition = "2024"
 description = "Stable connectors for warp-parse supporting source and sink functionality"
 authors = ["WP Labs Team"]
@@ -13,19 +13,19 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
 # WP Core Dependencies
-wp-connector-api = "0.13"
-wp-connector-utils = "0.3"
-wp-parse-api =  "0.12"
+wp-connector-api = "0.14"
+wp-connector-utils = "0.5"
+wp-parse-api =  "0.13"
 wp-model-core = "0.10"
-wp-log =  "0.4"
-wp-error =  "0.12"
+wp-log =  "0.5"
+wp-error =  "0.13"
 wp-specs =  "0.12"
-wp-conf-base = "0.6"
+wp-conf-base = "0.7"
 wp-data-fmt = "0.10"
 
 orion_exp = "0.1"
-orion-error = "0.8"
-orion_conf = { version = "0.7", features = ["yaml", "toml"] }
+orion-error = "0.9"
+orion_conf = { version = "0.8", features = ["yaml", "toml"] }
 
 async-trait = "0.1"
 anyhow = "1.0"
