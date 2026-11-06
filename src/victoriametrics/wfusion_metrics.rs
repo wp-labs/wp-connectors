@@ -7,6 +7,8 @@ use prometheus::{GaugeVec, IntCounterVec, register_gauge_vec, register_int_count
 
 pub(crate) trait Labels {
     fn values(&self) -> Vec<&str>;
+    // tenant_id 是可选标签，缺失时保留空值以兼容旧数据。
+    fn set_tenant_id(&mut self, record: &DataRecord);
 }
 
 macro_rules! generate_metrics {
@@ -14,11 +16,24 @@ macro_rules! generate_metrics {
         #[derive(Debug, Clone, Default)]
         pub struct $name {
             $(pub $field: String,)*
+            pub tenant_id: String,
         }
 
         impl Labels for $name {
             fn values(&self) -> Vec<&str> {
-                vec![$(self.$field.as_str(),)*]
+                vec![$(self.$field.as_str(),)* self.tenant_id.as_str()]
+            }
+
+            fn set_tenant_id(&mut self, record: &DataRecord) {
+                self.tenant_id = record
+                    .get2("tenant_id")
+                    .opt()
+                    .get_value()
+                    .and_then(|value| match value {
+                        Value::Chars(value) => Some(value.to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
             }
         }
 
@@ -32,7 +47,7 @@ macro_rules! generate_metrics {
                 metrics
             }
 
-            pub fn labels() -> Vec<&'static str> { vec![ $( stringify!($field), )* ] }
+            pub fn labels() -> Vec<&'static str> { vec![ $( stringify!($field), )* "tenant_id" ] }
         }
     };
 }
@@ -59,7 +74,8 @@ fn record_value_to_f64(record: &DataRecord) -> f64 {
 }
 
 fn record_counter<M: FromRecord>(data: &DataRecord, counter: &IntCounterVec) {
-    if let Some((labels, count)) = M::from_record(data) {
+    if let Some((mut labels, count)) = M::from_record(data) {
+        labels.set_tenant_id(data);
         counter
             .with_label_values(&labels.values())
             .inc_by(count as u64);
@@ -67,7 +83,8 @@ fn record_counter<M: FromRecord>(data: &DataRecord, counter: &IntCounterVec) {
 }
 
 fn record_gauge<M: FromRecord>(data: &DataRecord, gauge: &GaugeVec) {
-    if let Some((labels, value)) = M::from_record(data) {
+    if let Some((mut labels, value)) = M::from_record(data) {
+        labels.set_tenant_id(data);
         gauge.with_label_values(&labels.values()).set(value);
     }
 }
@@ -475,10 +492,26 @@ mod tests {
         r.append(DataField::from_chars("source_type", "kafka"));
         r.append(DataField::from_chars("machine", "node1"));
         let (m, _) = ReceiveTotalMetrics::from_record(&r).unwrap();
+        assert!(m.tenant_id.is_empty());
         let l = m.values();
         let before = RECEIVE_TOTAL.with_label_values(&l).get();
         receive_total_stat(&r);
         assert_eq!(RECEIVE_TOTAL.with_label_values(&l).get(), before + 3);
+    }
+
+    #[test]
+    fn receive_total_stat_includes_tenant_id_label() {
+        let mut r = mk("rows_total", "src-tenant", 2);
+        r.append(DataField::from_chars("tenant_id", "tenant-123"));
+
+        let (mut metrics, _) = ReceiveTotalMetrics::from_record(&r).unwrap();
+        metrics.set_tenant_id(&r);
+        assert_eq!(metrics.tenant_id, "tenant-123");
+
+        let labels = metrics.values();
+        let before = RECEIVE_TOTAL.with_label_values(&labels).get();
+        receive_total_stat(&r);
+        assert_eq!(RECEIVE_TOTAL.with_label_values(&labels).get(), before + 2);
     }
 
     #[test]

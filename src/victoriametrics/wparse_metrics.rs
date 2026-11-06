@@ -74,7 +74,15 @@ pub(crate) fn source_values(data: &DataRecord) -> (RecvMetrics, i64) {
     if let Some(Value::Int(f)) = data.get2("total").map(|x| x.get_value()) {
         count = *f;
     }
+    recv_metrics.tenant_id = record_tenant_id(data);
     (recv_metrics, count)
+}
+
+fn record_tenant_id(data: &DataRecord) -> String {
+    match data.get2("tenant_id").map(|field| field.get_value()) {
+        Some(Value::Chars(value)) => value.to_string(),
+        _ => String::new(),
+    }
 }
 
 pub(crate) fn parse_all(data: &DataRecord) -> (ParseAllMetrics, u64) {
@@ -89,6 +97,7 @@ pub(crate) fn parse_all(data: &DataRecord) -> (ParseAllMetrics, u64) {
     if let Some(Value::Int(total)) = data.get2("total").opt().get_value() {
         count = *total
     }
+    parse_metrics.tenant_id = record_tenant_id(data);
     (parse_metrics, count as u64)
 }
 
@@ -108,6 +117,7 @@ pub(crate) fn send_sink(data: &DataRecord) -> (SinkMetrics, u64) {
     if let Some(Value::Int(f)) = data.get2("success").opt().get_value() {
         count = *f;
     }
+    sink_metrics.tenant_id = record_tenant_id(data);
     (sink_metrics, count as u64)
 }
 
@@ -149,10 +159,13 @@ macro_rules! generate_metrics {
             }
             pub fn labels() -> Vec<&'static str> { vec![ $( stringify!($field), )* ] }
             pub fn values(&self) -> Vec<&str> { vec![ $( self.$field.as_str(), )* ] }
-            // 检查所有字段是否非空
+            // tenant_id 可选，其余标签仍必须非空。
             #[allow(dead_code)]
             pub fn is_valid(&self) -> bool {
-                self.values().iter().all(|x| !x.is_empty())
+                $(if stringify!($field) != "tenant_id" && self.$field.is_empty() {
+                    return false;
+                })*
+                true
             }
         }
     };
@@ -160,10 +173,10 @@ macro_rules! generate_metrics {
 generate_metrics!(CpuMetrics;  pid, access_type, access_name, instance);
 generate_metrics!(MemoryMetrics; pid, access_type, access_name, instance);
 
-generate_metrics!(RecvMetrics; pid, access_type, access_name, instance, source_type, source_name);
-generate_metrics!(ParseAllMetrics; pid, access_type, access_name, instance, package_name, rule_name);
+generate_metrics!(RecvMetrics; pid, access_type, access_name, instance, source_type, source_name, tenant_id);
+generate_metrics!(ParseAllMetrics; pid, access_type, access_name, instance, package_name, rule_name, tenant_id);
 // generate_extend_metrics!(ParseMetrics; pid, rule_name, wp_src_ip, log_business, log_type, log_desc, pos_sn);
-generate_metrics!(SinkMetrics; pid, access_type, access_name, instance, sink_group, sink_name);
+generate_metrics!(SinkMetrics; pid, access_type, access_name, instance, sink_group, sink_name, tenant_id);
 
 lazy_static! {
     pub static ref PID: String = sysinfo::get_current_pid()
@@ -196,4 +209,58 @@ lazy_static! {
         &MemoryMetrics::labels()
     )
     .expect("register wparse_memory_usage fail");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wp_model_core::model::DataField;
+
+    fn sample_record(tenant_id: Option<&str>) -> DataRecord {
+        let mut record = DataRecord::default();
+        record.append(DataField::from_chars("wp_source_type", "kafka"));
+        record.append(DataField::from_chars("target", "source-a"));
+        record.append(DataField::from_chars("wp_access_ip", "127.0.0.1"));
+        record.append(DataField::from_chars("wp_package_name", "package-a"));
+        record.append(DataField::from_chars("wp_rule_name", "rule-a"));
+        record.append(DataField::from_chars("wp_sink_group", "group-a"));
+        record.append(DataField::from_chars("wp_sink_name", "sink-a"));
+        record.append(DataField::from_int("total", 3));
+        record.append(DataField::from_int("success", 2));
+        if let Some(tenant_id) = tenant_id {
+            record.append(DataField::from_chars("tenant_id", tenant_id));
+        }
+        record
+    }
+
+    #[test]
+    fn record_metrics_include_tenant_id_label() {
+        let record = sample_record(Some("tenant-123"));
+
+        let (recv, _) = source_values(&record);
+        let (parse, _) = parse_all(&record);
+        let (sink, _) = send_sink(&record);
+
+        assert_eq!(RecvMetrics::labels().last(), Some(&"tenant_id"));
+        assert_eq!(recv.tenant_id, "tenant-123");
+        assert_eq!(ParseAllMetrics::labels().last(), Some(&"tenant_id"));
+        assert_eq!(parse.tenant_id, "tenant-123");
+        assert_eq!(SinkMetrics::labels().last(), Some(&"tenant_id"));
+        assert_eq!(sink.tenant_id, "tenant-123");
+    }
+
+    #[test]
+    fn missing_tenant_id_keeps_parse_metric_valid() {
+        let record = sample_record(None);
+        let (recv, _) = source_values(&record);
+        let (parse, _) = parse_all(&record);
+        let (sink, _) = send_sink(&record);
+
+        assert!(recv.tenant_id.is_empty());
+        assert!(parse.tenant_id.is_empty());
+        assert!(sink.tenant_id.is_empty());
+        assert!(recv.is_valid());
+        assert!(parse.is_valid());
+        assert!(sink.is_valid());
+    }
 }
