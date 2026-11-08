@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-11-08
+
+### Added
+
+- **指标新增 `tenant_id` 标签**：`wparse` 侧的 `wparse_receive_data`、`wparse_parse_all`、`wparse_send_to_sink`
+  以及 `warp-fusion` 侧的 `wf_*` 记录级指标，都会带上数据中的 `tenant_id`，多租户部署可直接在
+  VM / Grafana 上按租户拆分与聚合。
+- 数据中缺少 `tenant_id` 时标签取空串，且不再因此把这些指标判为无效，旧数据与既有看板可继续使用。
+
+### Changed
+
+- 测试依赖 `wp-connector-test-utils` 0.3 → 0.4。
+
 ## [0.23.1] - 2026-10-12
 
 ### Fixed
