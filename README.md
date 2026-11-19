@@ -235,6 +235,12 @@ wp-flow 系统的统一连接器库，提供多种数据源（Source）和数据
 > `Prometheus` / `VictoriaMetrics` 注册为 Sink，但语义是**指标导出器**（无 `sink.rs`，实现于 `exporter.rs`）。
 > `dmdb`（达梦，ODBC）在 [`wp-connectors-labs`](../wp-connectors-labs)；本仓 `src/dmdb/` 已停用（模块与 feature 均被注释）。
 
+VictoriaMetrics 已支持 raw JSON object/对象数组和 `DataRecord`。默认 `mapping="fields"`，从 `__name__`、`values` 读取指标；`mapping="rules"` 可用一个或多个 JSON Pointer 条件精确匹配输入记录，每条记录最多产生一个样本。每项 `[[metrics]]` 可以配置输出名、Gauge/Counter 类型、标签和时间字段；Counter 的每条输入按增量累加。示例见 [通用配置](examples/victoriametrics/fields.toml)、[15 项 WParse/WFusion 兼容规则](examples/victoriametrics/monitoring.toml) 和 [使用说明](examples/victoriametrics/README.md)。
+
+同名 worker 共享一个运行实例、Prometheus Registry 和推送任务，不同名称独立维护状态。名称必须在进程内唯一标识逻辑 sink；跨 group 同名仍会复用。同名配置不同会报错。Registry 保存当前指标值，按 `flush_secs` 定时 gather 并推送快照；失败时保留当前状态并重试；最后一个 worker 停止时执行有超时的最终推送。
+
+迁移时需要显式配置映射：原来的 WParse/WFusion sink 请将 `monitoring.toml` 的参数并入 sink params，设置 `mapping="rules"`。规则使用 `match` 配置条件路径和值；例如旧 `(stage,name)` 配对写成 `match = { "/stage" = "Pick", "/name" = "pick_stat" }`。已移除旧 stage 硬编码和本机 CPU/进程内存采样；窗口业务内存指标保留。指标值使用 Prometheus 标准的有限浮点数；Counter 按每条输入增量累加，要求输入非负；不再把非法值静默转成 0。时间参数仅在省略时采用默认值，显式无效值报错。完整契约和迁移说明见 [通用 sink 开发说明](docs/victoriametrics-generic-json-sink.md)。
+
 ## 快速开始
 
 ### 构建

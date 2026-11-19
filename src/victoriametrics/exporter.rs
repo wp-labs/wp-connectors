@@ -1,474 +1,543 @@
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+//! 按名称共享指标状态；各传输配置独立定时推送指标快照。
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, LazyLock, Mutex, Weak};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use orion_error::prelude::SourceRawErr;
-
-use prometheus::{Encoder, TextEncoder};
-use std::sync::Arc;
-use sysinfo::System;
-use tokio::{sync::oneshot, task::JoinHandle};
-use wp_connector_api::{SinkReason, SinkResult};
-use wp_log::{debug_data, error_data, info_data};
-use wp_model_core::model::{DataRecord, Value};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[strum(ascii_case_insensitive)]
-enum Stage {
-    Pick,
-    Parse,
-    Sink,
-    Receiver,
-    Router,
-    Window,
-    Rule,
-    Alert,
-    Event,
-    Evictor,
-    /// wfusion runtime 的分配器统计阶段。
-    Alloc,
-}
-
-use crate::victoriametrics::wfusion_metrics::{
-    alert_dispatch_failed_stat, alert_emitted_total_stat, event_e2e_latency_second_p99_stat,
-    receive_total_stat, route_errors_stat, rule_events_total_stat, rule_instances_stat,
-    rule_matches_total_stat, window_late_stat, window_memory_capacity_stat, window_memory_stat,
-    window_rows_stat,
+use prometheus::core::Metric;
+use prometheus::{
+    Counter, Encoder, Gauge, Opts, TextEncoder,
+    proto::{MetricFamily, MetricType},
 };
+use serde_json::Value;
+use tokio::task::JoinHandle;
+use wp_connector_api::{SinkReason, SinkResult};
+use wp_model_core::model::DataRecord;
 
-use super::wparse_metrics::{parse_all_stat, receive_data_stat, sink_stat, system_usage_stat};
+use super::config::{MetricKind, VictoriaMetric, duration, invalid};
+use super::mapper::{Mapper, MetricFamilyDefinition, MetricUpdate};
+use crate::http_utils::join_endpoint_path;
+
+/// 按 SinkSpec.name 共享指标状态，并复用相同传输配置的运行任务。
+static RUNTIMES: LazyLock<Mutex<HashMap<String, NamedRuntimes>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// 一个逻辑 sink 名称下的共享状态和传输运行实例。
+#[derive(Default)]
+struct NamedRuntimes {
+    /// 弱引用避免索引表延长指标状态的生命周期；活跃 runtime 持有实际状态。
+    metric_store: Weak<SharedMetricStore>,
+    /// 同一 name 可有多个传输配置；相同配置的 worker 共用对应 runtime。
+    runtimes: Vec<Weak<SinkRuntime>>,
+}
+
+/// 单个 worker 持有的 sink 句柄；映射器独立，指标状态按名称共享。
 pub(crate) struct VictoriaMetricExporter {
-    write_url: String,
-    client: reqwest::Client,
-    flush_interval: Duration,
-    stop_tx: Option<oneshot::Sender<()>>,
-    flush_handle: Option<JoinHandle<()>>,
-    system: System,
+    runtime: Option<Arc<SinkRuntime>>,
+    mapper: Mapper,
 }
-
-fn duration_millis_i64(duration: Duration) -> i64 {
-    i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
+/// 一个推送任务使用的传输和推送配置；映射规则不在这里，因此同配置 worker 可共用任务。
+#[derive(Clone, PartialEq)]
+struct SharedSinkConfig {
+    endpoint: String,
+    api_path: String,
+    flush_secs: f64,
+    timeout_secs: f64,
 }
-
-impl Clone for VictoriaMetricExporter {
-    fn clone(&self) -> Self {
+impl From<&VictoriaMetric> for SharedSinkConfig {
+    fn from(sink_config: &VictoriaMetric) -> Self {
         Self {
-            system: System::new(),
-            write_url: self.write_url.clone(),
-            client: self.client.clone(),
-            flush_interval: self.flush_interval,
-            stop_tx: None,
-            flush_handle: None,
+            endpoint: sink_config.endpoint.clone(),
+            api_path: sink_config.api_path.clone(),
+            flush_secs: sink_config.flush_secs,
+            timeout_secs: sink_config.timeout_secs,
         }
     }
 }
+/// 保存同一传输配置的 worker 共用的 HTTP client、指标状态和定时任务。
+struct SinkRuntime {
+    transport_config: SharedSinkConfig,
+    http_client: reqwest::Client,
+    metric_store: Arc<SharedMetricStore>,
+    flush_task: Option<JoinHandle<()>>,
+}
+/// 可由输入处理和推送任务并发访问的指标状态。
+struct SharedMetricStore {
+    store: Mutex<MetricStore>,
+}
+/// 每条时间序列独立持有的 Prometheus 指标值。
+enum SeriesValue {
+    Gauge(Gauge),
+    Counter(Counter),
+}
 
-impl VictoriaMetricExporter {
-    pub(crate) fn new(
-        write_url: String,
-        client: reqwest::Client,
-        flush_interval: Duration,
-    ) -> Self {
+/// 保存一条时间序列的当前值和样本时间。
+struct SeriesState {
+    metric: SeriesValue,
+    timestamp: Option<i64>,
+}
+type Labels = BTreeMap<String, String>;
+
+/// 同名序列共用指标类型和 HELP，标签由每条序列独立决定。
+struct MetricFamilyState {
+    definition: MetricFamilyDefinition,
+    series: BTreeMap<Labels, SeriesState>,
+}
+
+/// 每个 sink 名称共享指标族及其时间序列。
+#[derive(Default)]
+struct MetricStore {
+    families: BTreeMap<String, MetricFamilyState>,
+}
+impl SharedMetricStore {
+    /// 创建独立的指标状态。
+    fn new() -> Self {
         Self {
-            write_url,
-            flush_interval,
-            stop_tx: None,
-            flush_handle: None,
-            client,
-            system: System::new(),
+            store: Mutex::new(MetricStore::default()),
         }
     }
+    /// 获取 指标状态锁，并将锁中毒转换为 sink 错误。
+    fn lock(&self) -> SinkResult<std::sync::MutexGuard<'_, MetricStore>> {
+        self.store.lock().map_err(|_| invalid("指标状态锁不可用"))
+    }
+}
 
-    pub(crate) async fn save_metric_to_victoriametric(&self, ts_ms: Option<i64>) -> SinkResult<()> {
-        Self::push_metrics(&self.client, &self.write_url, ts_ms).await
+impl SeriesState {
+    /// 创建带有本条序列标签的 Prometheus 指标。
+    fn new(metric_update: &MetricUpdate) -> SinkResult<Self> {
+        // 客户端构造指标时要求非空 HELP，导出时仍以指标族配置为准。
+        let help_text = metric_update
+            .help
+            .as_deref()
+            .filter(|help_text| !help_text.is_empty());
+        let metric_options = Opts::new(
+            &metric_update.name,
+            help_text.unwrap_or(&metric_update.name),
+        )
+        .const_labels(metric_update.labels.clone().into_iter().collect());
+        let metric = match metric_update.kind {
+            MetricKind::Gauge => Gauge::with_opts(metric_options)
+                .map(SeriesValue::Gauge)
+                .map_err(|error| invalid(format!("创建 Gauge 失败: {error}")))?,
+            MetricKind::Counter => Counter::with_opts(metric_options)
+                .map(SeriesValue::Counter)
+                .map_err(|error| invalid(format!("创建 Counter 失败: {error}")))?,
+        };
+        Ok(Self {
+            metric,
+            timestamp: None,
+        })
     }
 
-    pub(crate) fn start_flush_task(&mut self) {
-        if self.flush_interval.is_zero() {
-            error_data!("VictoriaMetric flush interval is zero; skip scheduling.");
-            return;
+    /// 更新序列当前值，Counter 直接采用 Prometheus 客户端的累加行为。
+    fn apply(&mut self, metric_update: &MetricUpdate) {
+        match &self.metric {
+            SeriesValue::Gauge(gauge) => gauge.set(metric_update.value),
+            SeriesValue::Counter(counter) => counter.inc_by(metric_update.value),
         }
-        let (stop_tx, mut stop_rx) = oneshot::channel();
-        let mut runner = self.clone();
-        let interval = self.flush_interval;
-        let handle = tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(interval);
-            // flush task 自己维护已推送的毫秒级时间戳，避免纳秒时间戳
-            // 转 i64 后再放大导致溢出。
-            let mut last_pushed_ms: i64 = 0;
-            loop {
-                tokio::select! {
-                    _ = ticker.tick() => {
-                        let curr_ms = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .map(duration_millis_i64)
-                            .unwrap_or(0);
-                        if curr_ms <= last_pushed_ms {
-                            continue;
-                        }
-                        last_pushed_ms = curr_ms;
-                        // CPU/内存统计在此统一刷新，避免在每条 DataRecord 中触发
-                        // sysinfo 系统调用（flush 间隔即采样间隔）。
-                        system_usage_stat(&mut runner.system);
-                        if let Err(err) = runner.save_metric_to_victoriametric(Some(curr_ms)).await {
-                            error_data!("VictoriaMetric periodic push failed: {}", err);
-                        }
-                    }
-                    _ = &mut stop_rx => break,
-                }
+        self.timestamp = metric_update.timestamp;
+    }
+}
+
+impl MetricStore {
+    /// 先校验整批定义并准备新序列，再更新状态，避免映射或 schema 错误造成部分写入。
+    fn apply(&mut self, metric_updates: &[MetricUpdate]) -> SinkResult<()> {
+        let mut batch_family_definitions = BTreeMap::new();
+        let mut new_series_by_key = BTreeMap::new();
+        for metric_update in metric_updates {
+            let series_key = metric_update.series_key();
+            let family_definition = metric_update.family_definition();
+            let existing_family = self.families.get(&metric_update.name);
+            if existing_family
+                .is_some_and(|family_state| family_state.definition != family_definition)
+                || batch_family_definitions
+                    .get(&metric_update.name)
+                    .is_some_and(|existing_definition| existing_definition != &family_definition)
+            {
+                return Err(invalid(format!(
+                    "指标 {} 类型/HELP 冲突",
+                    metric_update.name
+                )));
             }
-        });
-        self.stop_tx = Some(stop_tx);
-        self.flush_handle = Some(handle);
-    }
+            batch_family_definitions.insert(metric_update.name.clone(), family_definition);
+            if !existing_family
+                .is_some_and(|family_state| family_state.series.contains_key(&series_key.labels))
+                && let std::collections::btree_map::Entry::Vacant(series_entry) =
+                    new_series_by_key.entry(series_key)
+            {
+                series_entry.insert(SeriesState::new(metric_update)?);
+            }
+        }
 
-    async fn stop_flush_task(&mut self) {
-        if let Err(err) = self.save_metric_to_victoriametric(None).await {
-            error_data!("VictoriaMetric periodic push failed: {}", err);
+        // 所有可能失败的校验和新指标构造都已完成；下面按顺序应用 Gauge/Counter 更新。
+        for (metric_name, family_definition) in batch_family_definitions {
+            self.families
+                .entry(metric_name)
+                .or_insert_with(|| MetricFamilyState {
+                    definition: family_definition,
+                    series: BTreeMap::new(),
+                });
         }
-        self.stop_now();
-        if let Some(handle) = self.flush_handle.take()
-            && let Err(err) = handle.await
-        {
-            error_data!("VictoriaMetric flush task join error: {}", err);
+        for (series_key, series_state) in new_series_by_key {
+            self.families
+                .get_mut(&series_key.name)
+                .expect("指标族已准备")
+                .series
+                .insert(series_key.labels, series_state);
         }
-    }
-
-    fn stop_now(&mut self) {
-        if let Some(tx) = self.stop_tx.take() {
-            let _ = tx.send(());
-        }
-        if let Some(handle) = self.flush_handle.take() {
-            handle.abort();
-            self.flush_handle = None;
-        }
-    }
-
-    async fn push_metrics(
-        client: &reqwest::Client,
-        write_url: &str,
-        ts_ms: Option<i64>,
-    ) -> SinkResult<()> {
-        let encoder = TextEncoder::new();
-        let metric_families = prometheus::gather();
-        if metric_families.is_empty() {
-            info_data!("No metrics to export");
-            return Ok(());
-        }
-        let mut buffer = Vec::new();
-        if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
-            return Err(SinkReason::sink("prometheus encode error").with_detail(e.to_string()));
-        }
-        // 优先使用调用方提供的时间戳（来自 DataRecord.end_time），否则退回到当前时间。
-        let ts = ts_ms.unwrap_or_else(|| {
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0)
-        });
-        // let buffer = append_timestamp_to_each_sample(&buffer, ts);
-        let url = format!("{}?time_stamp={}", write_url, ts);
-        let response = client
-            .post(&url)
-            .body(buffer)
-            .send()
-            .await
-            .source_raw_err(SinkReason::Sink, "reqwest send error")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            info_data!("VictoriaMetrics API error: {} - {}", status, body);
-            return Err(SinkReason::sink(format!(
-                "VictoriaMetrics API error: {} - {}",
-                status, body
-            )));
+        for metric_update in metric_updates {
+            let series_key = metric_update.series_key();
+            self.families
+                .get_mut(&series_key.name)
+                .expect("指标族已准备")
+                .series
+                .get_mut(&series_key.labels)
+                .expect("时间序列已准备")
+                .apply(metric_update);
         }
         Ok(())
     }
+
+    /// 按指标名收集快照，同一指标族可包含不同标签集合的样本。
+    fn gather(&self) -> Vec<MetricFamily> {
+        // 手动组装 MetricFamily，允许同一指标名下的序列拥有不同标签集合。
+        self.families
+            .iter()
+            .map(|(metric_name, family_state)| {
+                let mut family_snapshot = MetricFamily::default();
+                family_snapshot.set_name(metric_name.clone());
+                family_snapshot.set_help(family_state.definition.help.clone().unwrap_or_default());
+                family_snapshot.set_field_type(match family_state.definition.kind {
+                    MetricKind::Gauge => MetricType::GAUGE,
+                    MetricKind::Counter => MetricType::COUNTER,
+                });
+                for series_state in family_state.series.values() {
+                    let mut metric_sample = match &series_state.metric {
+                        SeriesValue::Gauge(gauge) => gauge.metric(),
+                        SeriesValue::Counter(counter) => counter.metric(),
+                    };
+                    if let Some(timestamp_ms) = series_state.timestamp {
+                        metric_sample.set_timestamp_ms(timestamp_ms);
+                    }
+                    family_snapshot.mut_metric().push(metric_sample);
+                }
+                family_snapshot
+            })
+            .collect()
+    }
+}
+
+impl Drop for SinkRuntime {
+    /// 运行实例被异常释放时取消后台推送任务。
+    fn drop(&mut self) {
+        if let Some(flush_task) = &self.flush_task {
+            flush_task.abort();
+        }
+    }
+}
+impl VictoriaMetricExporter {
+    /// 按名称共享指标状态，复用相同传输配置的推送任务，并创建独立映射器。
+    pub(crate) fn for_name(sink_name: &str, sink_config: VictoriaMetric) -> SinkResult<Self> {
+        if sink_name.trim().is_empty() {
+            return Err(invalid("victoriametrics.name 不能为空"));
+        }
+        let mapper = Mapper::new(&sink_config)?;
+        let transport_config = SharedSinkConfig::from(&sink_config);
+        let mut runtime_index = RUNTIMES.lock().map_err(|_| invalid("运行实例锁不可用"))?;
+        // 弱引用只用于索引；清理已退出的 runtime，避免 name 表保留过期条目。
+        runtime_index.retain(|_, named_runtimes| {
+            named_runtimes
+                .runtimes
+                .retain(|runtime_ref| runtime_ref.strong_count() > 0);
+            !named_runtimes.runtimes.is_empty()
+        });
+        let named_runtimes = runtime_index.entry(sink_name.into()).or_default();
+        // 相同传输配置共用 client 和 flush 任务；Mapper 仍由每个 sink 句柄单独持有。
+        if let Some(runtime) = named_runtimes
+            .runtimes
+            .iter()
+            .filter_map(Weak::upgrade)
+            .find(|runtime| runtime.transport_config == transport_config)
+        {
+            return Ok(Self {
+                runtime: Some(runtime),
+                mapper,
+            });
+        }
+        // 不同传输配置建立独立 runtime，但升级同一个 name 下的指标状态弱引用。
+        let metric_store = match named_runtimes.metric_store.upgrade() {
+            Some(metric_store) => metric_store,
+            None => {
+                let metric_store = Arc::new(SharedMetricStore::new());
+                named_runtimes.metric_store = Arc::downgrade(&metric_store);
+                metric_store
+            }
+        };
+        let http_client = reqwest::Client::builder()
+            .timeout(duration(sink_config.timeout_secs, "timeout_secs")?)
+            .build()
+            .source_raw_err(SinkReason::Sink, "创建 VictoriaMetrics HTTP client 失败")?;
+        let mut runtime = SinkRuntime {
+            transport_config,
+            http_client,
+            metric_store,
+            flush_task: None,
+        };
+        runtime.start()?;
+        let runtime = Arc::new(runtime);
+        named_runtimes.runtimes.push(Arc::downgrade(&runtime));
+        Ok(Self {
+            runtime: Some(runtime),
+            mapper,
+        })
+    }
+    /// 获取当前运行实例；已停止的句柄返回 sink 错误。
+    fn runtime(&self) -> SinkResult<&SinkRuntime> {
+        self.runtime
+            .as_deref()
+            .ok_or_else(|| invalid("VictoriaMetrics sink 已停止"))
+    }
+
+    /// 逐个消费 JSON 对象并映射；整批通过后更新 Prometheus 指标。
+    async fn submit(&self, input_objects: Vec<Value>) -> SinkResult<()> {
+        let metric_updates = self.mapper.map_batch(input_objects)?;
+        self.submit_updates(metric_updates).await
+    }
+
+    /// 从借用的 DataRecord 直接映射，避免中间 JSON 树。
+    async fn submit_record(&self, data_record: &DataRecord) -> SinkResult<()> {
+        let metric_updates = self.mapper.map_records(std::iter::once(data_record))?;
+        self.submit_updates(metric_updates).await
+    }
+
+    /// 映射借用的 DataRecord 批次；整批映射完成后才提交。
+    async fn submit_records(&self, data_records: &[Arc<DataRecord>]) -> SinkResult<()> {
+        let metric_updates = self
+            .mapper
+            .map_records(data_records.iter().map(AsRef::as_ref))?;
+        self.submit_updates(metric_updates).await
+    }
+
+    /// 将排序后的整批映射结果应用到该 sink 名称共享的指标状态。
+    async fn submit_updates(&self, mut metric_updates: Vec<MetricUpdate>) -> SinkResult<()> {
+        let runtime = self.runtime()?;
+        if metric_updates.is_empty() {
+            return Ok(());
+        }
+        // 只排序本次调用：显式时间戳按升序应用；无时间戳样本由 VM 按接收时间处理，因此排在最后。
+        metric_updates.sort_by(|left, right| {
+            left.timestamp
+                .is_none()
+                .cmp(&right.timestamp.is_none())
+                .then_with(|| left.timestamp.cmp(&right.timestamp))
+        });
+        runtime.metric_store.lock()?.apply(&metric_updates)
+    }
+
+    /// 解析 raw JSON 对象或对象数组，再交给统一映射和 指标状态更新流程。
+    async fn submit_raw(&self, raw_payloads: Vec<&[u8]>) -> SinkResult<()> {
+        let parsed_input_objects = (|| {
+            let mut input_objects = Vec::new();
+            for raw_payload in &raw_payloads {
+                // 多个 payload 和 object 数组摊平成一次映射批次；任一输入非法时整批不提交。
+                match serde_json::from_slice::<Value>(raw_payload)
+                    .map_err(|error| invalid(format!("JSON 解析失败: {error}")))?
+                {
+                    Value::Object(object) => input_objects.push(Value::Object(object)),
+                    Value::Array(array) if array.iter().all(Value::is_object) => {
+                        input_objects.extend(array)
+                    }
+                    _ => return Err(invalid("JSON 输入仅支持 object 或 object 数组")),
+                }
+            }
+            Ok(input_objects)
+        })();
+        let input_objects = parsed_input_objects.inspect_err(|parse_error| {
+            log::debug!("JSON 输入失败: {parse_error}; 输入: {raw_payloads:?}")
+        })?;
+        self.submit(input_objects)
+            .await
+            .inspect_err(|mapping_error| {
+                log::debug!(
+                    "指标批次拒绝: {mapping_error}; 输入: {:?}",
+                    raw_payloads
+                        .iter()
+                        .map(|raw_payload| String::from_utf8_lossy(raw_payload))
+                        .collect::<Vec<_>>()
+                )
+            })
+    }
+}
+
+impl SinkRuntime {
+    /// 启动定时快照推送任务，并在发送失败后按退避间隔重试。
+    fn start(&mut self) -> SinkResult<()> {
+        let metric_store = self.metric_store.clone();
+        let http_client = self.http_client.clone();
+        let transport_config = self.transport_config.clone();
+        let flush_interval = duration(transport_config.flush_secs, "flush_secs")?;
+        // 推送任务持有共享指标状态和传输参数，避免与运行实例形成循环引用。
+        self.flush_task = Some(tokio::spawn(async move {
+            let mut flush_timer = tokio::time::interval(flush_interval);
+            flush_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                flush_timer.tick().await;
+                let mut retry_delay_secs = 1;
+                // 失败时保留指标状态；每次重试重新 gather 最新快照，退避上限为 30 秒。
+                while let Err(flush_error) =
+                    flush(&metric_store, &http_client, &transport_config).await
+                {
+                    log::error!("VictoriaMetrics flush 失败: {flush_error}");
+                    tokio::time::sleep(Duration::from_secs(retry_delay_secs)).await;
+                    retry_delay_secs = (retry_delay_secs * 2).min(30);
+                }
+                flush_timer.reset();
+            }
+        }));
+        Ok(())
+    }
+    /// 取消定时任务，并在请求超时范围内执行最终快照推送。
+    async fn stop(&mut self) -> SinkResult<()> {
+        if let Some(flush_task) = self.flush_task.take() {
+            flush_task.abort();
+            let _ = flush_task.await;
+        }
+        let final_flush_result = tokio::time::timeout(
+            duration(self.transport_config.timeout_secs, "timeout_secs")?,
+            flush(
+                &self.metric_store,
+                &self.http_client,
+                &self.transport_config,
+            ),
+        )
+        .await;
+        match final_flush_result {
+            Ok(Ok(())) => Ok(()),
+            result => {
+                let error_detail = match result {
+                    Ok(Err(push_error)) => push_error.to_string(),
+                    Err(timeout_error) => timeout_error.to_string(),
+                    _ => unreachable!(),
+                };
+                Err(invalid(format!("最终快照推送失败: {error_detail}")))
+            }
+        }
+    }
+}
+
+/// 收集当前指标，编码并推送快照。
+async fn flush(
+    metric_store: &SharedMetricStore,
+    http_client: &reqwest::Client,
+    transport_config: &SharedSinkConfig,
+) -> SinkResult<()> {
+    // gather 得到自有快照后立即释放状态锁，网络等待不会阻塞输入更新。
+    let metric_snapshot = metric_store.lock()?.gather();
+    if metric_snapshot.is_empty() {
+        return Ok(());
+    }
+    push(http_client, transport_config, &metric_snapshot).await
+}
+
+/// 使用 Prometheus TextEncoder 对指标快照进行编码。
+fn encode(metric_families: &[MetricFamily]) -> SinkResult<Vec<u8>> {
+    let mut encoded_payload = Vec::new();
+    TextEncoder::new()
+        .encode(metric_families, &mut encoded_payload)
+        .source_raw_err(SinkReason::Sink, "Prometheus 编码失败")?;
+    Ok(encoded_payload)
+}
+/// 将编码后的指标快照 POST 到 VictoriaMetrics 导入接口。
+async fn push(
+    http_client: &reqwest::Client,
+    transport_config: &SharedSinkConfig,
+    metric_families: &[MetricFamily],
+) -> SinkResult<()> {
+    let request_body = encode(metric_families)?;
+    let http_response = http_client
+        .post(join_endpoint_path(
+            &transport_config.endpoint,
+            &transport_config.api_path,
+        ))
+        .header(
+            reqwest::header::CONTENT_TYPE,
+            TextEncoder::new().format_type(),
+        )
+        .body(request_body)
+        .send()
+        .await
+        .source_raw_err(SinkReason::Sink, "VictoriaMetrics HTTP 请求失败")?;
+    if !http_response.status().is_success() {
+        let http_status = http_response.status();
+        let response_body = http_response.text().await.unwrap_or_default();
+        return Err(invalid(format!(
+            "VictoriaMetrics HTTP {http_status}: {response_body}"
+        )));
+    }
+    Ok(())
 }
 
 #[async_trait]
 impl wp_connector_api::AsyncRecordSink for VictoriaMetricExporter {
-    /// 只负责按 stage 更新 Prometheus counter，不再触发推送。
-    /// 推送完全交由 start_flush_task 启动的定时任务处理，
-    /// 解耦"数据收集"与"数据上报"，消除事件驱动推送与定时推送的时序冲突。
-    async fn sink_record(&mut self, data: &DataRecord) -> SinkResult<()> {
-        if let Some(Value::Chars(field)) = data.get2("stage").map(|x| x.get_value()) {
-            match field.as_str().parse::<Stage>() {
-                Ok(stage) => match stage {
-                    Stage::Pick => {
-                        receive_data_stat(data);
-                    }
-                    Stage::Parse => {
-                        parse_all_stat(data);
-                    }
-                    Stage::Sink => {
-                        sink_stat(data);
-                    }
-                    Stage::Receiver => {
-                        receive_total_stat(data);
-                    }
-                    Stage::Router => {
-                        route_errors_stat(data);
-                    }
-                    Stage::Window => {
-                        window_rows_stat(data);
-                        window_memory_stat(data);
-                        window_memory_capacity_stat(data);
-                        window_late_stat(data);
-                    }
-
-                    Stage::Rule => {
-                        rule_events_total_stat(data);
-                        rule_matches_total_stat(data);
-                        rule_instances_stat(data);
-                    }
-                    Stage::Alert => {
-                        alert_emitted_total_stat(data);
-                        alert_dispatch_failed_stat(data);
-                    }
-                    Stage::Event => {
-                        event_e2e_latency_second_p99_stat(data);
-                    }
-                    Stage::Evictor | Stage::Alloc => {}
-                },
-                Err(_) => {
-                    debug_data!("Invalid stage value: {}", field);
-                }
-            }
-        }
-        Ok(())
+    /// 直接映射并提交一条 DataRecord。
+    async fn sink_record(&mut self, data_record: &DataRecord) -> SinkResult<()> {
+        self.submit_record(data_record)
+            .await
+            .inspect_err(|error| log::debug!("DataRecord 批次拒绝: {error}; 输入: {data_record:?}"))
     }
-
-    async fn sink_records(&mut self, data: Vec<Arc<DataRecord>>) -> SinkResult<()> {
-        for record in data {
-            self.sink_record(record.as_ref()).await?;
-        }
-        Ok(())
+    /// 逐条直接映射 DataRecord，并在整批通过后一次性提交。
+    async fn sink_records(&mut self, data_records: Vec<Arc<DataRecord>>) -> SinkResult<()> {
+        self.submit_records(&data_records)
+            .await
+            .inspect_err(|error| {
+                log::debug!("DataRecord 批次拒绝: {error}; 输入: {data_records:?}")
+            })
     }
 }
-
-#[async_trait]
-impl wp_connector_api::AsyncCtrl for VictoriaMetricExporter {
-    async fn stop(&mut self) -> SinkResult<()> {
-        self.stop_flush_task().await;
-        Ok(())
-    }
-    async fn reconnect(&mut self) -> SinkResult<()> {
-        Ok(())
-    }
-}
-
 #[async_trait]
 impl wp_connector_api::AsyncRawDataSink for VictoriaMetricExporter {
-    async fn sink_str(&mut self, _data: &str) -> SinkResult<()> {
-        Err(SinkReason::sink(
-            "VictoriaMetric exporter does not support raw input; route TDC metrics only",
-        ))
+    /// 提交 UTF-8 JSON 文本，可为单个对象或对象数组。
+    async fn sink_str(&mut self, json_text: &str) -> SinkResult<()> {
+        self.submit_raw(vec![json_text.as_bytes()]).await
     }
-
-    async fn sink_bytes(&mut self, _data: &[u8]) -> SinkResult<()> {
-        Err(SinkReason::sink(
-            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only",
-        ))
+    /// 提交 JSON 字节，可为单个对象或对象数组。
+    async fn sink_bytes(&mut self, json_payload: &[u8]) -> SinkResult<()> {
+        self.submit_raw(vec![json_payload]).await
     }
-
-    async fn sink_str_batch(&mut self, _data: Vec<&str>) -> SinkResult<()> {
-        Err(SinkReason::sink(
-            "VictoriaMetric exporter does not support raw input; route TDC metrics only",
-        ))
+    /// 提交多段 UTF-8 JSON 输入，并将整批作为一次提交处理。
+    async fn sink_str_batch(&mut self, json_texts: Vec<&str>) -> SinkResult<()> {
+        self.submit_raw(
+            json_texts
+                .iter()
+                .map(|json_text| json_text.as_bytes())
+                .collect(),
+        )
+        .await
     }
-
-    async fn sink_bytes_batch(&mut self, _data: Vec<&[u8]>) -> SinkResult<()> {
-        Err(SinkReason::sink(
-            "VictoriaMetric exporter does not support raw bytes; route TDC metrics only",
-        ))
+    /// 提交多段 JSON 字节输入，并将整批作为一次提交处理。
+    async fn sink_bytes_batch(&mut self, json_payloads: Vec<&[u8]>) -> SinkResult<()> {
+        self.submit_raw(json_payloads).await
+    }
+}
+#[async_trait]
+impl wp_connector_api::AsyncCtrl for VictoriaMetricExporter {
+    /// 释放当前 worker；该传输任务的最后一个 worker 会触发最终 flush。
+    async fn stop(&mut self) -> SinkResult<()> {
+        // 只有最后一个持有 runtime 的句柄能取得 Arc 并停止任务、执行最终推送。
+        if let Some(runtime) = self.runtime.take()
+            && let Some(mut runtime) = Arc::into_inner(runtime)
+        {
+            return runtime.stop().await;
+        }
+        Ok(())
+    }
+    /// 检查当前 sink 句柄是否仍连接到运行实例。
+    async fn reconnect(&mut self) -> SinkResult<()> {
+        self.runtime().map(|_| ())
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::victoriametrics::wfusion_metrics::{
-        Labels, RECEIVE_TOTAL, ROUTE_ERRORS_TOTAL, RULE_MATCHES_TOTAL, ReceiveTotalMetrics,
-        RouteErrorsTotal, RuleMatchesTotal, WINDOW_ROWS_TOTAL, WindowRowsTotal,
-    };
-    use crate::victoriametrics::wparse_metrics::{
-        PARSE_ALL, RECV_FROM_SOURCE, SEND_TO_SINK, parse_all, send_sink, source_values,
-    };
-    use wp_connector_api::AsyncRecordSink;
-    use wp_model_core::model::{DataField, DataRecord};
-
-    #[test]
-    fn duration_millis_i64_saturates_instead_of_overflowing() {
-        let huge = Duration::from_millis(u64::MAX);
-        assert_eq!(duration_millis_i64(huge), i64::MAX);
-    }
-
-    #[test]
-    fn stage_parse_all_variants_and_reject_invalid() {
-        let cases = &[
-            "Pick", "Parse", "Sink", "Receiver", "Router", "Window", "Rule", "Alert", "Event",
-            "Evictor", "Alloc",
-        ];
-        for &s in cases {
-            assert!(s.parse::<Stage>().is_ok(), "stage '{}' should parse", s);
-        }
-        assert!("pick".parse::<Stage>().is_ok());
-        assert!("alloc".parse::<Stage>().is_ok());
-        assert!("Unknown".parse::<Stage>().is_err());
-    }
-
-    fn test_exporter() -> VictoriaMetricExporter {
-        let client = reqwest::Client::builder()
-            .no_proxy()
-            .timeout(Duration::from_secs(1))
-            .build()
-            .expect("client");
-        VictoriaMetricExporter::new(
-            "http://127.0.0.1:8428/insert".into(),
-            client,
-            Duration::from_secs(1),
-        )
-    }
-
-    /// 测试 sink_record 更新指标
-    #[tokio::test]
-    async fn sink_record_updates_metrics() {
-        let mut exporter = test_exporter();
-
-        // Pick stage
-        let pick_key = "pick-target";
-        let mut pick_record = DataRecord::default();
-        pick_record.append(DataField::from_chars("stage", "Pick"));
-        pick_record.append(DataField::from_chars("target", pick_key));
-        pick_record.append(DataField::from_int("total", 2));
-        pick_record.append(DataField::from_chars("wp_source_type", "kafka"));
-        pick_record.append(DataField::from_chars("wp_access_ip", "127.0.0.1"));
-        let (pick_values, _) = source_values(&pick_record);
-        let pick_labels = pick_values.values();
-        let pick_counter = RECV_FROM_SOURCE.with_label_values(&pick_labels);
-        let pick_before = pick_counter.get();
-        exporter.sink_record(&pick_record).await.unwrap();
-        assert_eq!(pick_counter.get(), pick_before + 2);
-
-        // Parse stage
-        let parse_key = "parse-target";
-        let mut parse_record = DataRecord::default();
-        parse_record.append(DataField::from_chars("stage", "Parse"));
-        parse_record.append(DataField::from_chars("target", parse_key));
-        parse_record.append(DataField::from_int("success", 5));
-        parse_record.append(DataField::from_int("total", 5));
-        parse_record.append(DataField::from_chars("wp_package_name", "pkg-a"));
-        parse_record.append(DataField::from_chars("wp_rule_name", parse_key));
-        let (parse_values, _) = parse_all(&parse_record);
-        let parse_labels = parse_values.values();
-        let parse_all_counter = PARSE_ALL.with_label_values(&parse_labels);
-        let parse_all_before = parse_all_counter.get();
-        exporter.sink_record(&parse_record).await.unwrap();
-        assert_eq!(parse_all_counter.get(), parse_all_before + 5);
-
-        // Sink stage
-        let sink_name = "sink-target";
-        let sink_category = "sink-category";
-        let sink_business = "sink-business";
-        let log_business = "log-biz";
-        let mut sink_record_data = DataRecord::default();
-        sink_record_data.append(DataField::from_chars("stage", "Sink"));
-        sink_record_data.append(DataField::from_chars("target", sink_name)); // 使用 sink_name
-        sink_record_data.append(DataField::from_chars("sink_category", sink_category));
-        sink_record_data.append(DataField::from_chars("sink_business", sink_business));
-        sink_record_data.append(DataField::from_chars("log_business", log_business));
-        sink_record_data.append(DataField::from_int("success", 1));
-        sink_record_data.append(DataField::from_chars("wp_sink_group", sink_business));
-        sink_record_data.append(DataField::from_chars("wp_sink_name", sink_name));
-        let (sink_values, _) = send_sink(&sink_record_data);
-        let sink_labels = sink_values.values();
-        let sink_counter = SEND_TO_SINK.with_label_values(&sink_labels);
-        let sink_before = sink_counter.get();
-        exporter.sink_record(&sink_record_data).await.unwrap();
-        assert_eq!(sink_counter.get(), sink_before + 1);
-    }
-
-    /// 覆盖 Receiver/Router/Window/Rule 四个新 stage 的指标分发
-    #[tokio::test]
-    async fn sink_record_updates_wfusion_metrics() {
-        let mut exporter = test_exporter();
-
-        // Receiver → receive_total_stat
-        let mut r = DataRecord::default();
-        r.append(DataField::from_chars("stage", "Receiver"));
-        r.append(DataField::from_chars("name", "rows_total"));
-        r.append(DataField::from_chars("label", "src-1"));
-        r.append(DataField::from_int("value", 10));
-        let mut m = ReceiveTotalMetrics::new();
-        m.source_name = "src-1".into();
-        let labels = m.values();
-        let before = RECEIVE_TOTAL.with_label_values(&labels).get();
-        exporter.sink_record(&r).await.unwrap();
-        assert_eq!(RECEIVE_TOTAL.with_label_values(&labels).get(), before + 10);
-
-        // Router → route_errors_stat
-        let mut r = DataRecord::default();
-        r.append(DataField::from_chars("stage", "Router"));
-        r.append(DataField::from_chars("name", "route_errors_total"));
-        r.append(DataField::from_chars("label", "src-2"));
-        r.append(DataField::from_int("value", 1));
-        let mut m = RouteErrorsTotal::new();
-        m.source_name = "src-2".into();
-        let labels = m.values();
-        let before = ROUTE_ERRORS_TOTAL.with_label_values(&labels).get();
-        exporter.sink_record(&r).await.unwrap();
-        assert_eq!(
-            ROUTE_ERRORS_TOTAL.with_label_values(&labels).get(),
-            before + 1
-        );
-
-        // Window → window_rows_stat
-        let mut r = DataRecord::default();
-        r.append(DataField::from_chars("stage", "Window"));
-        r.append(DataField::from_chars("name", "rows"));
-        r.append(DataField::from_chars("label", "win-fusion-test"));
-        r.append(DataField::from_int("value", 7));
-        let mut m = WindowRowsTotal::new();
-        m.window_name = "win-fusion-test".into();
-        let labels = m.values();
-        WINDOW_ROWS_TOTAL.with_label_values(&labels).set(0.0);
-        exporter.sink_record(&r).await.unwrap();
-        assert_eq!(WINDOW_ROWS_TOTAL.with_label_values(&labels).get(), 7.0);
-
-        // Rule → rule_matches_total_stat
-        //
-        // 标签值必须与本 crate 其它测试**不重叠**：这些是进程级全局计数器，
-        // 断言又是 `before + delta` 差值。`wfusion_metrics::all_other_stats` 也写
-        // `RULE_MATCHES_TOTAL{rule_name="rule-1"}` 且同样是 +3，并行时两边会互污
-        // （实测表现为 `left: 6, right: 3`），所以这里用独占名。
-        let rule_name = "rule-1-exporter";
-        let mut r = DataRecord::default();
-        r.append(DataField::from_chars("stage", "Rule"));
-        r.append(DataField::from_chars("name", "matches_total"));
-        r.append(DataField::from_chars("label", rule_name));
-        r.append(DataField::from_int("value", 3));
-        let mut m = RuleMatchesTotal::new();
-        m.rule_name = rule_name.into();
-        let labels = m.values();
-        let before = RULE_MATCHES_TOTAL.with_label_values(&labels).get();
-        exporter.sink_record(&r).await.unwrap();
-        assert_eq!(
-            RULE_MATCHES_TOTAL.with_label_values(&labels).get(),
-            before + 3
-        );
-    }
-
-    // #[tokio::test]
-    // async fn flush_task_start_and_stop_transitions() {
-    //     let mut exporter = test_exporter();
-    //     assert!(exporter.flush_handle.is_none());
-    //     exporter.start_flush_task();
-    //     assert!(exporter.flush_handle.is_some());
-    //     assert!(exporter.stop_tx.is_some());
-    //     exporter.stop().await.unwrap();
-    //     assert!(exporter.flush_handle.is_none());
-    //     assert!(exporter.stop_tx.is_none());
-    // }
-}
+#[path = "tests.rs"]
+mod tests;
