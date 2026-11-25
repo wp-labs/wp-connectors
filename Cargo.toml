@@ -3,7 +3,7 @@ resolver = "2"
 members = ["."]  # 当前包作为workspace成员
 
 [workspace.package]
-version = "0.17.0" # @gxl:set(version)
+version = "0.24.0" # @gxl:set(version)
 edition = "2024"
 description = "Stable connectors for warp-parse supporting source and sink functionality"
 authors = ["WP Labs Team"]
@@ -13,19 +13,19 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 
 [workspace.dependencies]
 # WP Core Dependencies
-wp-connector-api = "0.11"
-wp-connector-utils = "0.1"
-wp-parse-api =  "0.10"
-wp-model-core = "0.8.9"
-wp-log =  "0.4"
-wp-error =  "0.10"
-wp-specs =  "0.10"
-wp-conf-base = "0.4"
-wp-data-fmt = "0.2"
+wp-connector-api = "0.14"
+wp-connector-utils = "0.5"
+wp-parse-api =  "0.13"
+wp-model-core = "0.10"
+wp-log =  "0.5"
+wp-error =  "0.13"
+wp-specs =  "0.13"
+wp-conf-base = "0.7"
+wp-data-fmt = "0.10"
 
 orion_exp = "0.1"
-orion-error = "0.8"
-orion_conf = { version = "0.7", features = ["yaml", "toml"] }
+orion-error = "0.9"
+orion_conf = { version = "0.8", features = ["yaml", "toml"] }
 
 async-trait = "0.1"
 anyhow = "1.0"
@@ -41,8 +41,8 @@ winnow = "1.0"
 educe = { version = "0.7", default-features = false, features = ["Debug", "Default"] }
 sea-orm = { version = "1.1", default-features = false, features = ["sqlx-mysql", "sqlx-postgres", "runtime-tokio-rustls"] }
 sqlx = { version = "0.9", default-features = false, features = ["mysql", "runtime-tokio", "tls-native-tls"]  }
-arrow = "59"
-wf-connector-api = "0.2"
+arrow = "60"
+wf-connector-api = "0.4"
 
 # Optional Feature Dependencies
 actix-web = { version = "4.12", default-features = false, features = ["macros"] }
@@ -71,7 +71,7 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 
 [features]
 default = ["kafka", "mysql", "postgres", "prometheus", "victoriametrics", "victorialogs", "doris", "count", "clickhouse", "elasticsearch", "http", "udp"]
-kafka = [ "dep:rdkafka-wrap"]
+kafka = [ "dep:rdkafka-wrap", "rdkafka-wrap/ssl", "rdkafka-wrap/sasl"]
 mysql = []
 postgres = []
 # dmdb = ["odbc-api"]
@@ -158,7 +158,7 @@ rand = { workspace = true }
 sqlx = { workspace = true }
 async-broadcast = "0.7"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
-wp-connector-test-utils =  { git = "https://github.com/wp-labs/wp-connector-test-utils.git" , tag = "v0.2.3" }
+wp-connector-test-utils = "0.4"
 
 [[example]]
 name = "http_sink_example"

@@ -266,7 +266,7 @@ mod tests {
 
     fn sample_record(id: i64, name: &str) -> Arc<DataRecord> {
         let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", id));
+        record.append(DataField::from_int("id", id));
         record.append(DataField::from_chars("name", name));
         Arc::new(record)
     }
@@ -359,7 +359,7 @@ mod tests {
                     vec![
                         DataField::from_chars("p_a_k", "p_a_v"),
                         DataField::from_chars("p_a_k", "p_a_v"),
-                        // DataField::from_digit("p_b_k",18),
+                        // DataField::from_int("p_b_k",18),
                     ],
                 );
                 let mut o = ObjectValue::new();

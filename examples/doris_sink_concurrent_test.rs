@@ -17,7 +17,7 @@ use wp_model_core::model::DataRecord;
 mod common_utils;
 // fn create_sample_record(id: i64) -> DataRecord {
 //     let mut record = DataRecord::default();
-//     record.append(DataField::from_digit("wp_event_id", id));
+//     record.append(DataField::from_int("wp_event_id", id));
 //     record.append(DataField::from_chars(
 //         "wp_src_key",
 //         format!("concurrent_test_{}", id),
@@ -28,8 +28,8 @@ mod common_utils;
 //         "http/request",
 //         format!("GET /api/test/{} HTTP/1.1", id),
 //     ));
-//     record.append(DataField::from_digit("status", 200));
-//     record.append(DataField::from_digit("size", 1024));
+//     record.append(DataField::from_int("status", 200));
+//     record.append(DataField::from_int("size", 1024));
 //     record.append(DataField::from_chars("referer", "https://example.com/test"));
 //     record.append(DataField::from_chars(
 //         "http/agent",

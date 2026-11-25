@@ -678,11 +678,11 @@ mod tests {
         let sink = HttpSink::new(config).await.unwrap();
 
         let mut record1 = DataRecord::default();
-        record1.append(DataField::from_digit("id", 1));
+        record1.append(DataField::from_int("id", 1));
         record1.append(DataField::from_chars("name", "alice"));
 
         let mut record2 = DataRecord::default();
-        record2.append(DataField::from_digit("id", 2));
+        record2.append(DataField::from_int("id", 2));
         record2.append(DataField::from_chars("name", "bob"));
 
         let records = vec![Arc::new(record1), Arc::new(record2)];
@@ -725,11 +725,11 @@ mod tests {
         let sink = HttpSink::new(config).await.unwrap();
 
         let mut record1 = DataRecord::default();
-        record1.append(DataField::from_digit("id", 1));
+        record1.append(DataField::from_int("id", 1));
         record1.append(DataField::from_chars("name", "alice"));
 
         let mut record2 = DataRecord::default();
-        record2.append(DataField::from_digit("id", 2));
+        record2.append(DataField::from_int("id", 2));
         record2.append(DataField::from_chars("name", "bob"));
 
         let records = vec![Arc::new(record1), Arc::new(record2)];
@@ -770,11 +770,11 @@ mod tests {
         let sink = HttpSink::new(config).await.unwrap();
 
         let mut record1 = DataRecord::default();
-        record1.append(DataField::from_digit("id", 1));
+        record1.append(DataField::from_int("id", 1));
         record1.append(DataField::from_chars("name", "alice"));
 
         let mut record2 = DataRecord::default();
-        record2.append(DataField::from_digit("id", 2));
+        record2.append(DataField::from_int("id", 2));
         record2.append(DataField::from_chars("name", "bob"));
 
         let records = vec![Arc::new(record1), Arc::new(record2)];
@@ -1589,7 +1589,7 @@ mod tests {
         let mut sink = HttpSink::new(config).await.unwrap();
 
         let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 123));
+        record.append(DataField::from_int("id", 123));
         record.append(DataField::from_chars("name", "test"));
 
         // This will fail because there's no server, but it verifies the method works
@@ -1623,7 +1623,7 @@ mod tests {
         assert_eq!(sink.time_stats.total_count, 0);
 
         let mut record = DataRecord::default();
-        record.append(DataField::from_digit("id", 1));
+        record.append(DataField::from_int("id", 1));
 
         // Send first record (will fail, but stats should update)
         let _ = sink.sink_record(&record).await;
@@ -1656,11 +1656,11 @@ mod tests {
         let mut sink = HttpSink::new(config).await.unwrap();
 
         let mut record1 = DataRecord::default();
-        record1.append(DataField::from_digit("id", 1));
+        record1.append(DataField::from_int("id", 1));
         record1.append(DataField::from_chars("name", "alice"));
 
         let mut record2 = DataRecord::default();
-        record2.append(DataField::from_digit("id", 2));
+        record2.append(DataField::from_int("id", 2));
         record2.append(DataField::from_chars("name", "bob"));
 
         let records = vec![Arc::new(record1), Arc::new(record2)];
@@ -1696,13 +1696,13 @@ mod tests {
         assert_eq!(sink.time_stats.total_count, 0);
 
         let mut record1 = DataRecord::default();
-        record1.append(DataField::from_digit("id", 1));
+        record1.append(DataField::from_int("id", 1));
 
         let mut record2 = DataRecord::default();
-        record2.append(DataField::from_digit("id", 2));
+        record2.append(DataField::from_int("id", 2));
 
         let mut record3 = DataRecord::default();
-        record3.append(DataField::from_digit("id", 3));
+        record3.append(DataField::from_int("id", 3));
 
         // Send batch of 3 records (will fail, but stats should update)
         let records = vec![Arc::new(record1), Arc::new(record2), Arc::new(record3)];
@@ -1711,10 +1711,10 @@ mod tests {
 
         // Send another batch of 2 records
         let mut record4 = DataRecord::default();
-        record4.append(DataField::from_digit("id", 4));
+        record4.append(DataField::from_int("id", 4));
 
         let mut record5 = DataRecord::default();
-        record5.append(DataField::from_digit("id", 5));
+        record5.append(DataField::from_int("id", 5));
 
         let records2 = vec![Arc::new(record4), Arc::new(record5)];
         let _ = sink.sink_records(records2).await;

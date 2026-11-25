@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use orion_error::conversion::SourceRawErr;
-use orion_error::conversion::ToStructError;
 use rdkafka_wrap::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka_wrap::client::{ClientContext, DefaultClientContext};
 use rdkafka_wrap::config::RDKafkaLogLevel;
@@ -91,15 +90,7 @@ impl KafkaSource {
             .set("auto.offset.reset", "earliest")
             .set("statistics.interval.ms", "5000")
             .set_log_level(RDKafkaLogLevel::Info);
-
-        if let Some(custom_configs) = &config.config {
-            for c in custom_configs {
-                let v: Vec<&str> = c.split('=').collect();
-                if v.len() >= 2 {
-                    client_config.set(v[0].trim(), v[1].trim());
-                }
-            }
-        }
+        apply_custom_configs(&mut client_config, config.config.as_deref());
 
         let consumer: StreamConsumer<KafkaContext> = client_config
             .create_with_context(KafkaContext {
@@ -139,15 +130,31 @@ impl KafkaSource {
     }
 }
 
+/// 将自定义参数同时用于 Kafka consumer 和 AdminClient，并保留值中等号之后的内容。
+fn apply_custom_configs(client_config: &mut ClientConfig, custom_configs: Option<&[String]>) {
+    if let Some(custom_configs) = custom_configs {
+        for entry in custom_configs {
+            if let Some((key, value)) = entry.split_once('=') {
+                let key = key.trim();
+                if !key.is_empty() {
+                    client_config.set(key, value.trim());
+                }
+            }
+        }
+    }
+}
+
 async fn create_topics(config: &KafkaSourceConf) -> SourceResult<()> {
-    let admin_client: AdminClient<DefaultClientContext> = ClientConfig::new()
+    let mut client_config = ClientConfig::new();
+    client_config
         .set("bootstrap.servers", &config.brokers)
-        .set_log_level(RDKafkaLogLevel::Info)
-        .create()
-        .source_raw_err(
-            SourceReason::SupplierError,
-            "create kafka admin client failed",
-        )?;
+        .set_log_level(RDKafkaLogLevel::Info);
+    apply_custom_configs(&mut client_config, config.config.as_deref());
+
+    let admin_client: AdminClient<DefaultClientContext> = client_config.create().source_raw_err(
+        SourceReason::SupplierError,
+        "create kafka admin client failed",
+    )?;
     for topic in &config.topic {
         let new_topic = NewTopic::new(topic, 1, TopicReplication::Fixed(1));
         let results = admin_client
@@ -164,9 +171,11 @@ async fn create_topics(config: &KafkaSourceConf) -> SourceResult<()> {
                         wp_log::warn_data!("[kafka] topic {} already exists, continuing", name);
                         continue;
                     }
-                    return Err(SourceReason::SupplierError.to_err().with_detail(format!(
-                        "failed to create kafka topic {name} with error: {code}"
-                    )));
+                    wp_log::error_data!(
+                        "[kafka] topic creation failed, continuing: topic={} kafka_error={:?}",
+                        name,
+                        code
+                    );
                 }
             }
         }

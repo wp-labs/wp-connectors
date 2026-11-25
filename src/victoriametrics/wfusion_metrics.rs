@@ -43,7 +43,7 @@ trait FromRecord: Sized + Labels {
 
 fn record_value_to_f64(record: &DataRecord) -> f64 {
     match record.get2("value").opt().get_value() {
-        Some(Value::Digit(f)) => *f as f64,
+        Some(Value::Int(f)) => *f as f64,
         Some(Value::Chars(s)) => match s.parse::<f64>() {
             Ok(v) => v,
             Err(_) => {
@@ -417,7 +417,7 @@ mod tests {
         let mut r = DataRecord::default();
         r.append(DataField::from_chars("name", name));
         r.append(DataField::from_chars("label", label));
-        r.append(DataField::from_digit("value", value));
+        r.append(DataField::from_int("value", value));
         r
     }
 
@@ -444,7 +444,7 @@ mod tests {
     #[test]
     fn record_value_to_f64_parses() {
         let mut r = DataRecord::default();
-        r.append(DataField::from_digit("value", 42));
+        r.append(DataField::from_int("value", 42));
         assert_eq!(record_value_to_f64(&r), 42.0);
 
         let mut r = DataRecord::default();

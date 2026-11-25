@@ -10,7 +10,7 @@ pub fn create_sample_record(id: i64) -> DataRecord {
     let x: i64 = RNG.with(|rng| rng.borrow_mut().random());
 
     let mut record = DataRecord::default();
-    record.append(DataField::from_digit("wp_event_id", id));
+    record.append(DataField::from_int("wp_event_id", id));
     record.append(DataField::from_chars(
         "wp_src_key",
         format!("concurrent_test_{}", id),
@@ -21,8 +21,8 @@ pub fn create_sample_record(id: i64) -> DataRecord {
         "http/request",
         format!("GET /api/test/{} HTTP/1.1", id),
     ));
-    record.append(DataField::from_digit("status", x));
-    record.append(DataField::from_digit("size", x));
+    record.append(DataField::from_int("status", x));
+    record.append(DataField::from_int("size", x));
     record.append(DataField::from_chars("referer", "000123"));
     record.append(DataField::from_chars(
         "http/agent",

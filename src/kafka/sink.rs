@@ -216,11 +216,11 @@ mod tests {
         let records: Vec<Arc<DataRecord>> = vec![
             make_record(vec![
                 DataField::from_chars("name", "alice"),
-                DataField::from_digit("count", 42),
+                DataField::from_int("count", 42),
             ]),
             make_record(vec![
                 DataField::from_chars("name", "bob"),
-                DataField::from_digit("count", 7),
+                DataField::from_int("count", 7),
             ]),
         ];
 
@@ -268,10 +268,10 @@ mod tests {
 
     #[test]
     fn arrow_sink_path_typed_fields() {
-        // Simulate records with typed fields (Digit, Float, Bool)
+        // Simulate records with typed fields (Int, Float, Bool)
         let records: Vec<Arc<DataRecord>> = vec![make_record(vec![
             DataField::from_bool("active", true),
-            DataField::from_digit("count", 100),
+            DataField::from_int("count", 100),
             DataField::from_float("score", 1.5),
         ])];
 
@@ -313,11 +313,11 @@ mod tests {
         let records: Vec<Arc<DataRecord>> = vec![
             make_record(vec![
                 DataField::from_chars("name", "alice"),
-                DataField::from_digit("count", 42),
+                DataField::from_int("count", 42),
             ]),
             make_record(vec![
                 DataField::from_chars("name", "bob"),
-                DataField::from_digit("count", 7),
+                DataField::from_int("count", 7),
             ]),
         ];
 
