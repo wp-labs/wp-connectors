@@ -24,6 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install SASL development library
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsasl2-dev
       - uses: Swatinem/rust-cache@v2
 
       - name: Force re-resolve to latest compatible deps
