@@ -5,7 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.24.0] - 2026-11-08
+
+### Added
+
+- **指标新增 `tenant_id` 标签**：`wparse` 侧的 `wparse_receive_data`、`wparse_parse_all`、`wparse_send_to_sink`
+  以及 `warp-fusion` 侧的 `wf_*` 记录级指标，都会带上数据中的 `tenant_id`，多租户部署可直接在
+  VM / Grafana 上按租户拆分与聚合。
+- 数据中缺少 `tenant_id` 时标签取空串，且不再因此把这些指标判为无效，旧数据与既有看板可继续使用。
+
+### Changed
+
+- 测试依赖 `wp-connector-test-utils` 0.3 → 0.4。
+
+## [0.23.1] - 2026-10-12
+
+### Fixed
+
+- **`wf-connector-api` 0.3 → 0.4**：`orion-error` 0.9 的对齐是以 `wf-connector-api 0.4` 发布的，本 crate 仍写 `^0.3`。与已升到 `^0.4` 的 `wp-core-connectors 0.10.1` / warp-fusion 同处一张依赖图时，会同时装入 `wf-connector-api` 的 0.3 与 0.4 两份，`SourceReason` / `StructError` 类型随之分裂。本次对齐到 `^0.4`。
+
+## [0.23.0] - 2026-10-12
+
+### Changed
+- **依赖 `wp-specs` 0.12 → 0.13**：随 `wp-specs` 0.13（其公开 `ParamMap` 升级到 `wp-connector-api` 0.14），消除依赖图中重复的 `wp-connector-api`。消费方须一同升级。
+
+## [0.22.0] - 2026-10-12
+
+### Changed
+- **升级到 orion-error 0.9 世代**：`orion-error` 0.8 → 0.9、`orion_conf` 0.7 → 0.8（公共 API 兼容）。
+- 依赖升级：`wp-connector-api` 0.13 → 0.14、`wp-connector-utils` 0.3 → 0.5、`wp-error` 0.12 → 0.13、`wp-conf-base` 0.6 → 0.7、`wp-log` 0.4 → 0.5。消费方须一同升级以避免跨版本类型冲突。
+
+## [0.21.0] - 2026-09-19
+
+### Changed
+
+- **破坏性依赖升级（消费方须一同升）**：`arrow` 59 → 60、`wf-connector-api` 0.2 → 0.3、`wp-connector-api` 0.12 → 0.13、`wp-connector-utils` 0.2 → 0.3、`wp-model-core` 0.9 → 0.10、`wp-parse-api` 0.11 → 0.12、`wp-error` 0.11 → 0.12、`wp-specs` 0.11 → 0.12、`wp-conf-base` 0.5 → 0.6、`wp-data-fmt` 0.9 → 0.10。
+  `arrow` 与 `wf-connector-api` 必须同时升：前者决定 `RecordBatch` 的类型身份，后者的
+  `BatchSource::receive_batch` 就落在这条 trait 签名上；漏升任一个都会出现「依赖图里两个
+  arrow 版本」或 trait 签名不匹配。升级后依赖图内 `arrow` 只剩一个版本。
+- **`wp-connector-test-utils` 改为 crates.io 版本依赖**：由 git tag `v0.2.4` 改为 `"0.3"`
+  （该版本已随 `wp-connector-api` 0.13 / `wp-model-core` 0.10 对齐）。
+- 跟进 `wp-model-core` 0.10 的整型正名：`DataField::from_digit` → `from_int`、
+  `Value::Digit` → `Value::Int`、`DataType::Digit` → `DataType::Int`（共 67 处；源码级改名，无行为变化）。
+
+## [0.20.0] - 2026-09-07
+
+### Added
+
+- Kafka Source 批量接收参数可配置：
+  - `batch_max_bytes`（默认 256KiB，主参）：单个 `SourceBatch` 最大字节数，`0` = 不限；
+  - `batch_size`（默认 0 = 不限条数）：显式设 ≥1 时按条数限制，与字节上限谁先到谁触发
+    （防止极小消息把单批事件数/派发量子撑得过大）；
+  - `batch_timeout_ms`（默认 1，≥0）：凑批时单次读取最长等待，`0` = 不等待（逐条返回）；
+    `batch_size` 与 `batch_max_bytes` 同时为 `0` 且 `batch_timeout_ms > 0` 时报错（批无大小上限）。
+  - `recv_impl` 先阻塞等待第一条（空闲不加延迟），随后在读取窗口内持续凑批，
+    到达任一上限即作为一个 `SourceBatch` 交给上层；凑批错误顺延下一轮暴露、
+    不丢已 poll 消息、partition 内顺序不变（关联 warp-parse#356）。
+
+### Changed
+
+- Kafka Source 批量默认行为调整：由固定 `512 条 / 1ms`（上一版实现）改为**按字节凑批**
+  —— 默认 `batch_size = 0`（不限条数）+ `batch_max_bytes = 256KiB`，小事件自动多装、
+  大事件按字节控制单批内存；需要固定派发量子时显式设置 `batch_size`。
+  纯字节/纯条数/组合上限均可通过参数组合表达。
+
+## [0.19.x] - 2026-07-12 ~ 2026-09-01
+
+### Fixed
+
+- `wp-model-core` 0.9.0 兼容：`data_type_to_arrow` 新增 `_ => ArrowType::Utf8` 覆盖 `BigInt` 等新变体
+- `wp-model-core` 0.9.0 兼容：`JsonFieldValue::serialize` 新增 `BigUint` 序列化为字符串（修复数据丢失）
+
+### Changed
+
+- WFusion 监控数据新增 stage 阶段支持
 
 ## [0.17.0] - 2026-06-26
 
@@ -256,7 +329,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial 0.7.x series release.
 
-[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/wp-labs/wp-connectors/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/wp-labs/wp-connectors/compare/v0.20.0...v0.21.0
+[0.19.1]: https://github.com/wp-labs/wp-connectors/compare/v0.19.0...v0.19.1
+[0.19.0]: https://github.com/wp-labs/wp-connectors/compare/v0.17.0...v0.19.0
 [0.17.0]: https://github.com/wp-labs/wp-connectors/compare/v0.15.8...v0.17.0
 [0.15.8]: https://github.com/wp-labs/wp-connectors/compare/v0.15.6...v0.15.8
 [0.15.6]: https://github.com/wp-labs/wp-connectors/compare/v0.15.5...v0.15.6

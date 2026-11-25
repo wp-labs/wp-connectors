@@ -8,7 +8,7 @@ use std::sync::Arc;
 use sysinfo::System;
 use tokio::{sync::oneshot, task::JoinHandle};
 use wp_connector_api::{SinkReason, SinkResult};
-use wp_log::{error_data, info_data};
+use wp_log::{debug_data, error_data, info_data};
 use wp_model_core::model::{DataRecord, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
@@ -24,6 +24,8 @@ enum Stage {
     Alert,
     Event,
     Evictor,
+    /// wfusion runtime 的分配器统计阶段。
+    Alloc,
 }
 
 use crate::victoriametrics::wfusion_metrics::{
@@ -228,10 +230,10 @@ impl wp_connector_api::AsyncRecordSink for VictoriaMetricExporter {
                     Stage::Event => {
                         event_e2e_latency_second_p99_stat(data);
                     }
-                    Stage::Evictor => {}
+                    Stage::Evictor | Stage::Alloc => {}
                 },
                 Err(_) => {
-                    error_data!("Invalid stage value: {}", field);
+                    debug_data!("Invalid stage value: {}", field);
                 }
             }
         }
@@ -307,12 +309,13 @@ mod tests {
     fn stage_parse_all_variants_and_reject_invalid() {
         let cases = &[
             "Pick", "Parse", "Sink", "Receiver", "Router", "Window", "Rule", "Alert", "Event",
-            "Evictor",
+            "Evictor", "Alloc",
         ];
         for &s in cases {
             assert!(s.parse::<Stage>().is_ok(), "stage '{}' should parse", s);
         }
         assert!("pick".parse::<Stage>().is_ok());
+        assert!("alloc".parse::<Stage>().is_ok());
         assert!("Unknown".parse::<Stage>().is_err());
     }
 
@@ -435,13 +438,19 @@ mod tests {
         assert_eq!(WINDOW_ROWS_TOTAL.with_label_values(&labels).get(), 7.0);
 
         // Rule → rule_matches_total_stat
+        //
+        // 标签值必须与本 crate 其它测试**不重叠**：这些是进程级全局计数器，
+        // 断言又是 `before + delta` 差值。`wfusion_metrics::all_other_stats` 也写
+        // `RULE_MATCHES_TOTAL{rule_name="rule-1"}` 且同样是 +3，并行时两边会互污
+        // （实测表现为 `left: 6, right: 3`），所以这里用独占名。
+        let rule_name = "rule-1-exporter";
         let mut r = DataRecord::default();
         r.append(DataField::from_chars("stage", "Rule"));
         r.append(DataField::from_chars("name", "matches_total"));
-        r.append(DataField::from_chars("label", "rule-1"));
+        r.append(DataField::from_chars("label", rule_name));
         r.append(DataField::from_int("value", 3));
         let mut m = RuleMatchesTotal::new();
-        m.rule_name = "rule-1".into();
+        m.rule_name = rule_name.into();
         let labels = m.values();
         let before = RULE_MATCHES_TOTAL.with_label_values(&labels).get();
         exporter.sink_record(&r).await.unwrap();
