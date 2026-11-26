@@ -418,7 +418,7 @@ mod tests {
         DataField::from_chars(name, val)
     }
 
-    fn digit_field(name: &str, val: i64) -> DataField {
+    fn int_field(name: &str, val: i64) -> DataField {
         DataField::from_int(name, val)
     }
 
@@ -445,8 +445,8 @@ mod tests {
     #[test]
     fn schema_inferred_from_first_record() {
         let recs = vec![
-            make_record(vec![char_field("name", "alice"), digit_field("age", 30)]),
-            make_record(vec![char_field("name", "bob"), digit_field("age", 25)]),
+            make_record(vec![char_field("name", "alice"), int_field("age", 30)]),
+            make_record(vec![char_field("name", "bob"), int_field("age", 25)]),
         ];
         let ipc = records_to_arrow_ipc(&recs).expect("ipc");
         let cursor = std::io::Cursor::new(&ipc);
@@ -463,7 +463,7 @@ mod tests {
     // -- Type mapping -----------------------------------------------------
 
     #[test]
-    fn digit_maps_to_int64() {
+    fn int_maps_to_int64() {
         assert_eq!(data_type_to_arrow(&DataType::Int), ArrowType::Int64);
     }
 
@@ -550,8 +550,8 @@ mod tests {
     #[test]
     fn round_trip_string_and_digit() {
         let recs = vec![
-            make_record(vec![char_field("name", "alice"), digit_field("age", 30)]),
-            make_record(vec![char_field("name", "bob"), digit_field("age", 25)]),
+            make_record(vec![char_field("name", "alice"), int_field("age", 30)]),
+            make_record(vec![char_field("name", "bob"), int_field("age", 25)]),
         ];
         let ipc = records_to_arrow_ipc(&recs).expect("ipc");
         let cursor = std::io::Cursor::new(&ipc);
@@ -583,7 +583,7 @@ mod tests {
 
     #[test]
     fn round_trip_single_record() {
-        let recs = vec![make_record(vec![digit_field("count", 42)])];
+        let recs = vec![make_record(vec![int_field("count", 42)])];
         let ipc = records_to_arrow_ipc(&recs).expect("ipc");
         let cursor = std::io::Cursor::new(&ipc);
         let mut reader = StreamReader::try_new(cursor, None).expect("read ipc");
@@ -625,7 +625,7 @@ mod tests {
         let recs: Vec<_> = (0..100)
             .map(|i| {
                 make_record(vec![
-                    digit_field("id", i),
+                    int_field("id", i),
                     char_field("label", &format!("row_{i}")),
                 ])
             })
@@ -780,7 +780,7 @@ mod tests {
     }
 
     #[test]
-    fn int32_col_from_digit() {
+    fn int32_col_from_int() {
         let recs = vec![make_record(vec![DataField::from_int("port", 8080)])];
         let schema = Arc::new(Schema::new(vec![Field::new(
             "port",

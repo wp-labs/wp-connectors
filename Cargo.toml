@@ -71,7 +71,7 @@ homepage = "https://github.com/wp-labs/wp-connectors"
 
 [features]
 default = ["kafka", "mysql", "postgres", "prometheus", "victoriametrics", "victorialogs", "doris", "count", "clickhouse", "elasticsearch", "http", "udp"]
-kafka = [ "dep:rdkafka-wrap"]
+kafka = [ "dep:rdkafka-wrap", "rdkafka-wrap/ssl", "rdkafka-wrap/sasl"]
 mysql = []
 postgres = []
 # dmdb = ["odbc-api"]
@@ -158,8 +158,7 @@ rand = { workspace = true }
 sqlx = { workspace = true }
 async-broadcast = "0.7"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
-#wp-connector-test-utils =  { git = "https://github.com/wp-labs/wp-connector-test-utils.git" , tag = "v0.2.4" }
-wp-connector-test-utils =   "0.4"
+wp-connector-test-utils = "0.4"
 
 [[example]]
 name = "http_sink_example"

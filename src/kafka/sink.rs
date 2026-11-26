@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn arrow_sink_path_typed_fields() {
-        // Simulate records with typed fields (Digit, Float, Bool)
+        // Simulate records with typed fields (Int, Float, Bool)
         let records: Vec<Arc<DataRecord>> = vec![make_record(vec![
             DataField::from_bool("active", true),
             DataField::from_int("count", 100),
