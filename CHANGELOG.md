@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-11-26
+
+### Added
+
+- **Kafka Source 支持 SASL_SSL**：`kafka` 特性默认开启 SSL / SASL 能力，在 source 的 `config` 里设置
+  `security.protocol`、`sasl.mechanism`、`sasl.username`、`sasl.password` 等参数即可连接带认证的集群。
+
+### Changed
+
+- Kafka 自动建 topic 失败不再中断启动，改为记录错误日志后继续消费；topic 已存在时仍按原逻辑继续。
+- `kafka` 特性现在编入 SASL，从源码构建需要本机具备 SASL 开发库（Debian/Ubuntu 为 `libsasl2-dev`）。
+
+### Fixed
+
+- Kafka 自定义参数的值中含 `=` 时（例如 base64 编码的 SASL 凭据）不再被截断。
+- Kafka 自定义参数同时作用于自动建 topic 的管理客户端，此前只作用于消费端，开启认证后建 topic 会失败。
+
 ## [0.24.0] - 2026-11-08
 
 ### Added
